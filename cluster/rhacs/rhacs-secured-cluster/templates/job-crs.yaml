@@ -26,9 +26,13 @@ spec:
               CLUSTER_NAME="{{ .Values.clusterName }}"
               CENTRAL_URL="https://central.${NAMESPACE}.svc"
 
-              # Skip if secured cluster is already registered (sensor-tls secret exists)
+              # Skip if secured cluster is already registered or CRS already applied
               if oc get secret sensor-tls -n "${NAMESPACE}" &>/dev/null; then
-                echo "SecuredCluster already registered (sensor-tls secret exists), skipping CRS generation."
+                echo "SecuredCluster already registered (sensor-tls secret exists), skipping."
+                exit 0
+              fi
+              if oc get secret cluster-registration-secret -n "${NAMESPACE}" &>/dev/null; then
+                echo "CRS already applied (cluster-registration-secret exists), skipping."
                 exit 0
               fi
 
