@@ -30,6 +30,16 @@ spec:
           env:
             - name: USERNAME
               value: {{ $username | quote }}
+            - name: USER_EMAIL
+              value: {{ $email | quote }}
+            - name: ROLE_NAME
+              value: {{ $roleName | quote }}
+            # RHACS declarative configuration YAML for this tenant.
+            # Central watches the rhacs-tenant-config ConfigMap and automatically
+            # reconciles access scopes and roles defined here.
+            # Group mappings (email → role) cannot be declarative because RHACS
+            # does not merge multiple definitions of the same auth provider —
+            # those are created via the Central API in Part 2 of the script below.
             - name: RHACS_TENANT_CONFIG
               value: |
                 name: {{ $scopeName }}
@@ -48,13 +58,6 @@ spec:
                 description: Analyst role for {{ $username }}
                 permissionSet: Analyst
                 accessScope: {{ $scopeName }}
-                ---
-                name: Keycloak SSO
-                minimumRole: None
-                groups:
-                  - key: email
-                    value: {{ $email }}
-                    role: {{ $roleName }}
           command:
             - /bin/bash
             - -c
@@ -70,17 +73,89 @@ spec:
                 exit 0
               fi
 
+              # --- Part 1: Declarative config (access scope + role) ---
+              # Adds YAML to the rhacs-tenant-config ConfigMap, which Central
+              # watches and reconciles automatically. These resources are
+              # immutable via the RHACS UI — changes must come through here.
               EXISTING=$(oc get configmap "${CM_NAME}" -n "${RHACS_NS}" -o jsonpath="{.data['${KEY}']}" 2>/dev/null || echo "")
               if [[ -n "${EXISTING}" ]]; then
-                echo "RHACS tenant config for '${USERNAME}' already exists, skipping."
+                echo "Declarative config for '${USERNAME}' already exists."
+              else
+                echo "Adding declarative config for '${USERNAME}'..."
+                oc patch configmap "${CM_NAME}" -n "${RHACS_NS}" \
+                  --type=merge \
+                  -p "{\"data\":{\"${KEY}\": $(echo "${RHACS_TENANT_CONFIG}" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')}}"
+                echo "Declarative config added."
+              fi
+
+              # --- Part 2: Group mapping via RHACS API (not declarative) ---
+              # Maps the user's email to their declarative role. This must use
+              # the API because RHACS declarative config does not support merging
+              # group mappings from multiple sources into a single auth provider.
+              RHACS_PASSWORD=$(oc get secret central-htpasswd -n "${RHACS_NS}" -o jsonpath='{.data.password}' | base64 -d)
+              CENTRAL_URL="https://central.${RHACS_NS}.svc"
+
+              echo "Waiting for Central API..."
+              until curl -sk -u "admin:${RHACS_PASSWORD}" "${CENTRAL_URL}/v1/metadata" | grep -q '"version"'; do
+                sleep 10
+              done
+
+              # Wait for the declarative role to be available
+              echo "Waiting for role '${ROLE_NAME}' to be created by declarative config..."
+              for i in $(seq 1 30); do
+                ROLE_EXISTS=$(curl -sk -u "admin:${RHACS_PASSWORD}" "${CENTRAL_URL}/v1/roles/${ROLE_NAME}" | python3 -c "
+              import sys, json
+              data = json.load(sys.stdin)
+              print(data.get('name', ''))
+              " 2>/dev/null || echo "")
+                if [[ "${ROLE_EXISTS}" == "${ROLE_NAME}" ]]; then
+                  break
+                fi
+                sleep 5
+              done
+
+              # Get auth provider ID
+              AUTH_PROVIDER_ID=$(curl -sk -u "admin:${RHACS_PASSWORD}" "${CENTRAL_URL}/v1/authProviders" | python3 -c "
+              import sys, json
+              data = json.load(sys.stdin)
+              providers = data.get('authProviders', [])
+              matches = [p['id'] for p in providers if p.get('name') == 'Keycloak SSO']
+              print(matches[0] if matches else '')
+              ")
+
+              if [[ -z "${AUTH_PROVIDER_ID}" ]]; then
+                echo "WARNING: Auth provider 'Keycloak SSO' not found, skipping group mapping."
                 exit 0
               fi
 
-              echo "Adding RHACS tenant config for '${USERNAME}'..."
+              # Check if mapping already exists
+              EXISTING_MAPPING=$(curl -sk -u "admin:${RHACS_PASSWORD}" "${CENTRAL_URL}/v1/groups" | python3 -c "
+              import sys, json
+              data = json.load(sys.stdin)
+              groups = data.get('groups', [])
+              matches = [g['props'].get('id','') for g in groups
+                         if g.get('props',{}).get('authProviderId') == '${AUTH_PROVIDER_ID}'
+                         and g.get('props',{}).get('key') == 'email'
+                         and g.get('props',{}).get('value') == '${USER_EMAIL}']
+              print(matches[0] if matches else '')
+              ")
 
-              oc patch configmap "${CM_NAME}" -n "${RHACS_NS}" \
-                --type=merge \
-                -p "{\"data\":{\"${KEY}\": $(echo "${RHACS_TENANT_CONFIG}" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')}}"
+              if [[ -n "${EXISTING_MAPPING}" ]]; then
+                echo "Group mapping for '${USER_EMAIL}' already exists."
+              else
+                echo "Creating group mapping: ${USER_EMAIL} → ${ROLE_NAME}..."
+                curl -sk -u "admin:${RHACS_PASSWORD}" "${CENTRAL_URL}/v1/groups" \
+                  -X POST -H "Content-Type: application/json" \
+                  -d "{
+                    \"props\": {
+                      \"authProviderId\": \"${AUTH_PROVIDER_ID}\",
+                      \"key\": \"email\",
+                      \"value\": \"${USER_EMAIL}\"
+                    },
+                    \"roleName\": \"${ROLE_NAME}\"
+                  }" > /dev/null
+                echo "Group mapping created."
+              fi
 
-              echo "RHACS tenant config for '${USERNAME}' added successfully."
+              echo "RHACS tenant config for '${USERNAME}' complete."
       restartPolicy: OnFailure
