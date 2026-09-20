@@ -1,0 +1,19 @@
+apiVersion: v2
+name: rhacs
+description: Red Hat Advanced Cluster Security with SSO integration
+type: application
+version: 0.1.0
+
+dependencies:
+  - name: rhacs-operator
+    version: 0.1.0
+    repository: file://rhacs-operator
+  - name: rhacs-central
+    version: 0.1.0
+    repository: file://rhacs-central
+  - name: rhacs-secured-cluster
+    version: 0.1.0
+    repository: file://rhacs-secured-cluster
+  - name: rhacs-sso-config
+    version: 0.1.0
+    repository: file://rhacs-sso-config

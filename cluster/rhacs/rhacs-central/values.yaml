@@ -1,0 +1,9 @@
+namespace: rhacs
+
+central:
+  name: stackrox-central-services
+
+syncwave:
+  namespace: "-1"
+  tlsCertJob: "0"
+  central: "1"

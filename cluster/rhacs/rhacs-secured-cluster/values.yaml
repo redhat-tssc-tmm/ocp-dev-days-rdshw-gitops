@@ -1,0 +1,8 @@
+namespace: rhacs
+
+clusterName: local-secured-cluster
+centralEndpoint: central.rhacs.svc:443
+
+syncwave:
+  crsJob: "2"
+  securedCluster: "3"

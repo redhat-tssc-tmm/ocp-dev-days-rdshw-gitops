@@ -129,3 +129,6 @@ data:
             - 'vault kv put kv/secrets/rhdh/mcp-secret value={{ "{{" }} lookup("ansible.builtin.password", "/dev/null", chars=["ascii_letters", "digits"], length=32) {{ "}}" }}'
             - 'vault kv put kv/secrets/keycloak/client-secret clientId={{ $.Values.secrets.keycloak.clientId }} pluginClientId={{ $.Values.secrets.keycloak.pluginClientId }} clientSecret={{ $.Values.secrets.keycloak.clientSecret }}'
             - 'vault kv put kv/secrets/keycloak/plugin-client-secret value={{ $.Values.secrets.keycloak.pluginClientSecret }}'
+{{- if $.Values.secrets.rhacs.clientSecret }}
+            - 'vault kv put kv/secrets/rhacs/client-secret clientId={{ $.Values.secrets.rhacs.clientId }} clientSecret={{ $.Values.secrets.rhacs.clientSecret }}'
+{{- end }}

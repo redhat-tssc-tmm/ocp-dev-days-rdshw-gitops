@@ -1,0 +1,5 @@
+apiVersion: v2
+name: rhacs-central
+description: RHACS Central services with TLS and console plugin
+type: application
+version: 0.1.0

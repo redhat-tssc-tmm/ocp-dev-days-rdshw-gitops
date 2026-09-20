@@ -1,0 +1,13 @@
+namespace: rhacs
+
+keycloak:
+  namespace: keycloak
+  realm: sso
+  host: ""
+
+rhacs:
+  adminEmail: admin@demo.redhat.com
+
+syncwave:
+  externalSecret: "3"
+  ssoJob: "4"

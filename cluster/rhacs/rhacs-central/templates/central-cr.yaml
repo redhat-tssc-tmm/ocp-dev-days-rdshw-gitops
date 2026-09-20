@@ -1,0 +1,16 @@
+apiVersion: platform.stackrox.io/v1alpha1
+kind: Central
+metadata:
+  name: {{ .Values.central.name }}
+  namespace: {{ include "rhacs-central.namespace" . }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ .Values.syncwave.central | quote }}
+spec:
+  central:
+    exposure:
+      route:
+        enabled: true
+    defaultTLSSecret:
+      name: central-default-tls-cert
+  consolePlugin:
+    enabled: true

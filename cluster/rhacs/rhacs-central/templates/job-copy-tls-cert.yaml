@@ -1,0 +1,93 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rhacs-copy-tls-cert
+  namespace: {{ include "rhacs-central.namespace" . }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ .Values.syncwave.tlsCertJob | quote }}
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 30
+  template:
+    spec:
+      serviceAccountName: rhacs-setup
+      restartPolicy: OnFailure
+      containers:
+        - name: copy-tls-cert
+          image: registry.redhat.io/openshift4/ose-cli-rhel9:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+
+              NAMESPACE="{{ include "rhacs-central.namespace" . }}"
+
+              if oc get secret central-default-tls-cert -n "${NAMESPACE}" &>/dev/null; then
+                echo "Secret central-default-tls-cert already exists, skipping."
+                exit 0
+              fi
+
+              echo "Discovering default ingress certificate..."
+              SECRET_NAME=$(oc get deployment router-default -n openshift-ingress \
+                -o jsonpath='{.spec.template.spec.volumes[?(@.name=="default-certificate")].secret.secretName}')
+
+              if [[ -z "${SECRET_NAME}" ]]; then
+                echo "ERROR: Could not determine default certificate secret"
+                exit 1
+              fi
+
+              echo "Found ingress certificate secret: ${SECRET_NAME}"
+
+              TLS_CRT=$(oc get secret "${SECRET_NAME}" -n openshift-ingress -o jsonpath='{.data.tls\.crt}')
+              TLS_KEY=$(oc get secret "${SECRET_NAME}" -n openshift-ingress -o jsonpath='{.data.tls\.key}')
+
+              if [[ -z "${TLS_CRT}" ]] || [[ -z "${TLS_KEY}" ]]; then
+                echo "ERROR: Could not read certificate data"
+                exit 1
+              fi
+
+              oc create secret tls central-default-tls-cert \
+                --cert=<(echo "${TLS_CRT}" | base64 -d) \
+                --key=<(echo "${TLS_KEY}" | base64 -d) \
+                -n "${NAMESPACE}"
+
+              echo "Certificate copied successfully."
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: rhacs-setup
+  namespace: {{ include "rhacs-central.namespace" . }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ .Values.syncwave.namespace | quote }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: rhacs-setup
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ .Values.syncwave.namespace | quote }}
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "create"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: rhacs-setup
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ .Values.syncwave.namespace | quote }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: rhacs-setup
+subjects:
+  - kind: ServiceAccount
+    name: rhacs-setup
+    namespace: {{ include "rhacs-central.namespace" . }}

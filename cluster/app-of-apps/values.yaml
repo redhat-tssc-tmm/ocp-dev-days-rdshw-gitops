@@ -42,6 +42,10 @@ vault:
       userPassword: ""
     rhdh:
       argocdPassword: ""
+    # DEV ONLY — in production, pass clientSecret from the automation repo
+    rhacs:
+      clientId: rhacs
+      clientSecret: "00ifaFXkWfrNZwrqvzYZwyBhjkEWBzA6"
 
 externalSecrets:
   name: external-secrets
@@ -107,3 +111,10 @@ openshiftLightspeed:
 developerHub:
   name: developer-hub
   namespace: rhdh
+
+rhacs:
+  enabled: true
+  name: rhacs
+  namespace: rhacs
+  operatorNamespace: rhacs-operator
+  clusterName: local-secured-cluster

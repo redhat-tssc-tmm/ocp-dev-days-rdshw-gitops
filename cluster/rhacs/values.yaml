@@ -1,0 +1,21 @@
+rhacs-operator:
+  namespace: rhacs-operator
+  subscription:
+    source: redhat-operators-snapshot
+
+rhacs-central:
+  namespace: rhacs
+
+rhacs-secured-cluster:
+  namespace: rhacs
+  clusterName: local-secured-cluster
+  centralEndpoint: central.rhacs.svc:443
+
+rhacs-sso-config:
+  namespace: rhacs
+  keycloak:
+    namespace: keycloak
+    realm: sso
+    host: ""
+  rhacs:
+    adminEmail: admin@demo.redhat.com

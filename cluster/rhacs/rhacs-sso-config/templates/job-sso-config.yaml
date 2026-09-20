@@ -1,0 +1,282 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rhacs-sso-config
+  namespace: {{ include "rhacs-sso-config.namespace" . }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ .Values.syncwave.ssoJob | quote }}
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 30
+  template:
+    spec:
+      serviceAccountName: rhacs-setup
+      restartPolicy: OnFailure
+      containers:
+        - name: sso-config
+          image: registry.redhat.io/openshift4/ose-cli-rhel9:latest
+          env:
+            - name: RHACS_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: rhacs-sso-secret
+                  key: CLIENT_ID
+            - name: RHACS_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: rhacs-sso-secret
+                  key: CLIENT_SECRET
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+
+              NAMESPACE="{{ include "rhacs-sso-config.namespace" . }}"
+              KC_NAMESPACE="{{ .Values.keycloak.namespace }}"
+              KC_REALM="{{ .Values.keycloak.realm }}"
+              KC_HOST="{{ .Values.keycloak.host }}"
+              ADMIN_EMAIL="{{ .Values.rhacs.adminEmail }}"
+
+              CENTRAL_URL="https://central.${NAMESPACE}.svc"
+              KEYCLOAK_ISSUER="https://${KC_HOST}/realms/${KC_REALM}"
+
+              # ---- Discover credentials ----
+              RHACS_PASSWORD=$(oc get secret central-htpasswd -n "${NAMESPACE}" -o jsonpath='{.data.password}' | base64 -d)
+              KC_ADMIN_USER=$(oc get secret keycloak-initial-admin -n "${KC_NAMESPACE}" -o jsonpath='{.data.username}' | base64 -d)
+              KC_ADMIN_PASS=$(oc get secret keycloak-initial-admin -n "${KC_NAMESPACE}" -o jsonpath='{.data.password}' | base64 -d)
+
+              # ---- Helper functions ----
+              kc_token() {
+                curl -sk "https://${KC_HOST}/realms/master/protocol/openid-connect/token" \
+                  -d "client_id=admin-cli" \
+                  -d "username=${KC_ADMIN_USER}" \
+                  -d "password=${KC_ADMIN_PASS}" \
+                  -d "grant_type=password" | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])"
+              }
+
+              kc_api() {
+                local method="$1" path="$2"
+                shift 2
+                curl -sk "https://${KC_HOST}/admin/realms/${KC_REALM}${path}" \
+                  -H "Authorization: Bearer $(kc_token)" \
+                  -H "Content-Type: application/json" \
+                  -X "${method}" \
+                  "$@"
+              }
+
+              rhacs_api() {
+                local method="$1" path="$2"
+                shift 2
+                curl -sk -u "admin:${RHACS_PASSWORD}" "${CENTRAL_URL}${path}" \
+                  -X "${method}" \
+                  -H "Content-Type: application/json" \
+                  "$@"
+              }
+
+              # ---- Wait for Central API ----
+              echo "Waiting for Central API..."
+              until rhacs_api GET "/v1/metadata" | grep -q '"version"'; do
+                sleep 10
+              done
+              echo "Central API is available."
+
+              # ---- Wait for Keycloak ----
+              echo "Waiting for Keycloak..."
+              until curl -sk "https://${KC_HOST}/realms/${KC_REALM}/.well-known/openid-configuration" | grep -q '"issuer"'; do
+                sleep 10
+              done
+              echo "Keycloak is available."
+
+              CENTRAL_ROUTE=$(oc get route central -n "${NAMESPACE}" -o jsonpath='{.spec.host}')
+
+              # ---- Create Keycloak client ----
+              EXISTING_CLIENT=$(kc_api GET "/clients" | python3 -c "
+              import sys, json
+              clients = json.load(sys.stdin)
+              matches = [c['id'] for c in clients if c.get('clientId') == '${RHACS_CLIENT_ID}']
+              print(matches[0] if matches else '')
+              ")
+
+              if [[ -n "${EXISTING_CLIENT}" ]]; then
+                echo "Keycloak client '${RHACS_CLIENT_ID}' already exists (UUID: ${EXISTING_CLIENT})."
+                CLIENT_UUID="${EXISTING_CLIENT}"
+              else
+                echo "Creating Keycloak client '${RHACS_CLIENT_ID}'..."
+                kc_api POST "/clients" -d "{
+                  \"clientId\": \"${RHACS_CLIENT_ID}\",
+                  \"name\": \"Red Hat Advanced Cluster Security\",
+                  \"protocol\": \"openid-connect\",
+                  \"publicClient\": false,
+                  \"standardFlowEnabled\": true,
+                  \"directAccessGrantsEnabled\": true,
+                  \"serviceAccountsEnabled\": true,
+                  \"secret\": \"${RHACS_CLIENT_SECRET}\",
+                  \"redirectUris\": [\"https://${CENTRAL_ROUTE}/sso/providers/oidc/callback\"],
+                  \"webOrigins\": [\"https://${CENTRAL_ROUTE}\"]
+                }" -o /dev/null
+
+                CLIENT_UUID=$(kc_api GET "/clients" | python3 -c "
+              import sys, json
+              clients = json.load(sys.stdin)
+              matches = [c['id'] for c in clients if c.get('clientId') == '${RHACS_CLIENT_ID}']
+              print(matches[0] if matches else '')
+              ")
+                echo "Client created (UUID: ${CLIENT_UUID})."
+              fi
+
+              # ---- Configure client scopes ----
+              echo "Configuring client scopes..."
+              OFFLINE_SCOPE_ID=$(kc_api GET "/client-scopes" | python3 -c "
+              import sys, json
+              scopes = json.load(sys.stdin)
+              matches = [s['id'] for s in scopes if s.get('name') == 'offline_access']
+              print(matches[0] if matches else '')
+              ")
+
+              if [[ -n "${OFFLINE_SCOPE_ID}" ]]; then
+                kc_api DELETE "/clients/${CLIENT_UUID}/default-client-scopes/${OFFLINE_SCOPE_ID}" -o /dev/null 2>/dev/null || true
+                kc_api PUT "/clients/${CLIENT_UUID}/optional-client-scopes/${OFFLINE_SCOPE_ID}" -o /dev/null
+              fi
+
+              for scope_name in acr basic email profile roles web-origins; do
+                SCOPE_ID=$(kc_api GET "/client-scopes" | python3 -c "
+              import sys, json
+              scopes = json.load(sys.stdin)
+              matches = [s['id'] for s in scopes if s.get('name') == '${scope_name}']
+              print(matches[0] if matches else '')
+              ")
+                if [[ -n "${SCOPE_ID}" ]]; then
+                  kc_api PUT "/clients/${CLIENT_UUID}/default-client-scopes/${SCOPE_ID}" -o /dev/null 2>/dev/null || true
+                fi
+              done
+              echo "Scopes configured."
+
+              # ---- Assign offline_access role to admin user ----
+              echo "Assigning offline_access role to admin user..."
+              ADMIN_USER_ID=$(kc_api GET "/users?email=${ADMIN_EMAIL}&exact=true" | python3 -c "
+              import sys, json
+              users = json.load(sys.stdin)
+              print(users[0]['id'] if users else '')
+              ")
+
+              if [[ -n "${ADMIN_USER_ID}" ]]; then
+                OFFLINE_ROLE=$(kc_api GET "/roles" | python3 -c "
+              import sys, json
+              roles = json.load(sys.stdin)
+              matches = [r for r in roles if r.get('name') == 'offline_access']
+              print(json.dumps(matches[0]) if matches else '')
+              ")
+                if [[ -n "${OFFLINE_ROLE}" ]]; then
+                  kc_api POST "/users/${ADMIN_USER_ID}/role-mappings/realm" -d "[${OFFLINE_ROLE}]" -o /dev/null 2>/dev/null || true
+                  echo "offline_access role assigned."
+                fi
+              else
+                echo "WARNING: User '${ADMIN_EMAIL}' not found in Keycloak."
+              fi
+
+              # ---- Create OIDC auth provider in RHACS ----
+              EXISTING_PROVIDER=$(rhacs_api GET "/v1/authProviders" | python3 -c "
+              import sys, json
+              data = json.load(sys.stdin)
+              providers = data.get('authProviders', [])
+              matches = [p['id'] for p in providers if p.get('name') == 'Keycloak SSO']
+              print(matches[0] if matches else '')
+              ")
+
+              if [[ -n "${EXISTING_PROVIDER}" ]]; then
+                echo "OIDC auth provider 'Keycloak SSO' already exists (ID: ${EXISTING_PROVIDER})."
+                AUTH_PROVIDER_ID="${EXISTING_PROVIDER}"
+              else
+                echo "Creating OIDC auth provider in RHACS..."
+                RESULT=$(rhacs_api POST "/v1/authProviders" -d "{
+                  \"name\": \"Keycloak SSO\",
+                  \"type\": \"oidc\",
+                  \"uiEndpoint\": \"${CENTRAL_ROUTE}\",
+                  \"enabled\": true,
+                  \"config\": {
+                    \"issuer\": \"${KEYCLOAK_ISSUER}\",
+                    \"client_id\": \"${RHACS_CLIENT_ID}\",
+                    \"client_secret\": \"${RHACS_CLIENT_SECRET}\",
+                    \"mode\": \"post\"
+                  }
+                }")
+
+                AUTH_PROVIDER_ID=$(echo "${RESULT}" | python3 -c "
+              import sys, json
+              data = json.load(sys.stdin)
+              print(data.get('id', ''))
+              ")
+
+                if [[ -z "${AUTH_PROVIDER_ID}" ]]; then
+                  echo "ERROR: Failed to create auth provider"
+                  echo "${RESULT}"
+                  exit 1
+                fi
+                echo "Auth provider created (ID: ${AUTH_PROVIDER_ID})."
+              fi
+
+              # ---- Map admin email to Admin role ----
+              EXISTING_ADMIN_MAPPING=$(rhacs_api GET "/v1/groups" | python3 -c "
+              import sys, json
+              data = json.load(sys.stdin)
+              groups = data.get('groups', [])
+              matches = [g['props'].get('id','') for g in groups
+                         if g.get('props',{}).get('authProviderId') == '${AUTH_PROVIDER_ID}'
+                         and g.get('props',{}).get('key') == 'email'
+                         and g.get('props',{}).get('value') == '${ADMIN_EMAIL}']
+              print(matches[0] if matches else '')
+              ")
+
+              if [[ -n "${EXISTING_ADMIN_MAPPING}" ]]; then
+                echo "Admin role mapping already exists."
+              else
+                echo "Mapping '${ADMIN_EMAIL}' to RHACS Admin role..."
+                rhacs_api POST "/v1/groups" -d "{
+                  \"props\": {
+                    \"authProviderId\": \"${AUTH_PROVIDER_ID}\",
+                    \"key\": \"email\",
+                    \"value\": \"${ADMIN_EMAIL}\"
+                  },
+                  \"roleName\": \"Admin\"
+                }" > /dev/null
+                echo "Admin role mapping created."
+              fi
+
+              # ---- Set default role for unmatched users ----
+              EXISTING_DEFAULT=$(rhacs_api GET "/v1/groups" | python3 -c "
+              import sys, json
+              data = json.load(sys.stdin)
+              groups = data.get('groups', [])
+              matches = [g['props'].get('id','') for g in groups
+                         if g.get('props',{}).get('authProviderId') == '${AUTH_PROVIDER_ID}'
+                         and (g.get('props',{}).get('key') is None or g.get('props',{}).get('key') == '')]
+              print(matches[0] if matches else '')
+              ")
+
+              if [[ -n "${EXISTING_DEFAULT}" ]]; then
+                echo "Default role mapping already exists."
+              else
+                echo "Setting default role 'None' for unmatched users..."
+                rhacs_api POST "/v1/groups" -d "{
+                  \"props\": {
+                    \"authProviderId\": \"${AUTH_PROVIDER_ID}\"
+                  },
+                  \"roleName\": \"None\"
+                }" > /dev/null
+                echo "Default role mapping created."
+              fi
+
+              echo ""
+              echo "=========================================="
+              echo " RHACS SSO configuration complete."
+              echo ""
+              echo "  Auth provider: Keycloak SSO"
+              echo "  Issuer:        ${KEYCLOAK_ISSUER}"
+              echo "  Client ID:     ${RHACS_CLIENT_ID}"
+              echo ""
+              echo "  Role mappings:"
+              echo "    ${ADMIN_EMAIL}  →  Admin"
+              echo "    (all other users)     →  None"
+              echo "=========================================="

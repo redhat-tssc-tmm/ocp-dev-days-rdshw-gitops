@@ -1,0 +1,30 @@
+{{- if .Values.rhacs.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+{{ include "app-of-apps.metadata" (dict "name" .Values.rhacs.name "namespace" .Values.argocd.namespace "syncWave" "1") }}
+spec:
+  destination:
+    namespace: {{ .Values.rhacs.namespace }}
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    path: cluster/rhacs
+    repoURL: {{ .Values.gitops.repoURL }}
+    targetRevision: {{ .Values.gitops.targetRevision }}
+    helm:
+      valuesObject:
+        rhacs-operator:
+          subscription:
+            source: {{ include "app-of-apps.operatorSource" . }}
+        rhacs-central:
+          namespace: {{ .Values.rhacs.namespace }}
+        rhacs-secured-cluster:
+          namespace: {{ .Values.rhacs.namespace }}
+          clusterName: {{ .Values.rhacs.clusterName }}
+        rhacs-sso-config:
+          namespace: {{ .Values.rhacs.namespace }}
+          keycloak:
+            host: sso.{{ .Values.cluster.subdomain }}
+            realm: sso
+{{ include "app-of-apps.syncPolicy" . | indent 2 }}
+{{- end }}

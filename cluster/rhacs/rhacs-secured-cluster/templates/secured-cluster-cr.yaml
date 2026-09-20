@@ -1,0 +1,10 @@
+apiVersion: platform.stackrox.io/v1alpha1
+kind: SecuredCluster
+metadata:
+  name: stackrox-secured-cluster-services
+  namespace: {{ include "rhacs-secured-cluster.namespace" . }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ .Values.syncwave.securedCluster | quote }}
+spec:
+  clusterName: {{ .Values.clusterName }}
+  centralEndpoint: {{ .Values.centralEndpoint }}

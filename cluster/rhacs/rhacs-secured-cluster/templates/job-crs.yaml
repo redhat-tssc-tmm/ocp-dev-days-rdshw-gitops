@@ -1,0 +1,68 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rhacs-generate-crs
+  namespace: {{ include "rhacs-secured-cluster.namespace" . }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ .Values.syncwave.crsJob | quote }}
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 30
+  template:
+    spec:
+      serviceAccountName: rhacs-setup
+      restartPolicy: OnFailure
+      containers:
+        - name: generate-crs
+          image: registry.redhat.io/openshift4/ose-cli-rhel9:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+
+              NAMESPACE="{{ include "rhacs-secured-cluster.namespace" . }}"
+              CLUSTER_NAME="{{ .Values.clusterName }}"
+              CENTRAL_URL="https://central.${NAMESPACE}.svc"
+
+              # Skip if secured cluster is already registered (sensor-tls secret exists)
+              if oc get secret sensor-tls -n "${NAMESPACE}" &>/dev/null; then
+                echo "SecuredCluster already registered (sensor-tls secret exists), skipping CRS generation."
+                exit 0
+              fi
+
+              # Get Central admin password
+              echo "Retrieving Central admin credentials..."
+              RHACS_PASSWORD=$(oc get secret central-htpasswd -n "${NAMESPACE}" -o jsonpath='{.data.password}' | base64 -d)
+
+              # Wait for Central API
+              echo "Waiting for Central API to become available..."
+              until curl -sk -u "admin:${RHACS_PASSWORD}" "${CENTRAL_URL}/v1/metadata" | grep -q '"version"'; do
+                echo "  Central API not ready yet, retrying in 10s..."
+                sleep 10
+              done
+              echo "Central API is available."
+
+              # Generate CRS
+              echo "Generating Cluster Registration Secret for '${CLUSTER_NAME}'..."
+              CRS_RESPONSE=$(curl -sk -u "admin:${RHACS_PASSWORD}" \
+                "${CENTRAL_URL}/v1/cluster-init/crs" \
+                -X POST -H "Content-Type: application/json" \
+                -d "{\"name\":\"${CLUSTER_NAME}\"}")
+
+              KUBECTL_BUNDLE=$(echo "${CRS_RESPONSE}" | python3 -c "
+              import sys, json
+              data = json.load(sys.stdin)
+              bundle = data.get('kubectlBundle', '')
+              if not bundle:
+                print('ERROR: No kubectlBundle in response', file=sys.stderr)
+                print(json.dumps(data, indent=2), file=sys.stderr)
+                sys.exit(1)
+              print(bundle)
+              ")
+
+              # Apply the CRS secrets
+              echo "${KUBECTL_BUNDLE}" | base64 -d | oc apply -n "${NAMESPACE}" -f -
+
+              echo "CRS generated and applied successfully."

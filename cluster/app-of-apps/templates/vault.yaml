@@ -42,6 +42,9 @@ spec:
             clientSecret: {{ .Values.vault.secrets.keycloak.clientSecret | quote }}
             pluginClientId: {{ .Values.vault.secrets.keycloak.pluginClientId | quote }}
             pluginClientSecret: {{ .Values.vault.secrets.keycloak.pluginClientSecret | quote }}
+          rhacs:
+            clientId: {{ .Values.vault.secrets.rhacs.clientId | quote }}
+            clientSecret: {{ .Values.vault.secrets.rhacs.clientSecret | quote }}
   syncPolicy:
     automated: {}
     syncOptions:
