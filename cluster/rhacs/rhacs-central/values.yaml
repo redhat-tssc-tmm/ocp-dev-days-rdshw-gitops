@@ -3,6 +3,11 @@ namespace: rhacs
 central:
   name: stackrox-central-services
 
+vault:
+  namespace: vault
+  podName: vault-0
+  secretPath: kv/secrets/rhacs/api-token
+
 syncwave:
   namespace: "-1"
   tlsCertJob: "0"

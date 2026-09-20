@@ -1,0 +1,89 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rhacs-api-token
+  namespace: {{ include "rhacs-central.namespace" . }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 30
+  template:
+    spec:
+      serviceAccountName: rhacs-setup
+      restartPolicy: OnFailure
+      containers:
+        - name: api-token
+          image: registry.redhat.io/openshift4/ose-cli-rhel9:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+
+              NAMESPACE="{{ include "rhacs-central.namespace" . }}"
+              VAULT_NS="{{ .Values.vault.namespace }}"
+              VAULT_POD="{{ .Values.vault.podName }}"
+              VAULT_PATH="{{ .Values.vault.secretPath }}"
+              TOKEN_NAME="ci-pipeline-token"
+              TOKEN_ROLE="Continuous Integration"
+
+              CENTRAL_URL="https://central.${NAMESPACE}.svc"
+
+              # Get Central admin password
+              RHACS_PASSWORD=$(oc get secret central-htpasswd -n "${NAMESPACE}" -o jsonpath='{.data.password}' | base64 -d)
+
+              # Wait for Central API
+              echo "Waiting for Central API..."
+              until curl -sk -u "admin:${RHACS_PASSWORD}" "${CENTRAL_URL}/v1/metadata" | grep -q '"version"'; do
+                sleep 10
+              done
+              echo "Central API is available."
+
+              # Check if token already exists
+              EXISTING_TOKEN=$(curl -sk -u "admin:${RHACS_PASSWORD}" "${CENTRAL_URL}/v1/apitokens" | python3 -c "
+              import sys, json
+              data = json.load(sys.stdin)
+              tokens = data.get('tokens', [])
+              matches = [t['id'] for t in tokens if t.get('name') == '${TOKEN_NAME}' and not t.get('revoked', False)]
+              print(matches[0] if matches else '')
+              ")
+
+              if [[ -n "${EXISTING_TOKEN}" ]]; then
+                echo "API token '${TOKEN_NAME}' already exists (ID: ${EXISTING_TOKEN})."
+                VAULT_CHECK=$(oc exec "${VAULT_POD}" -n "${VAULT_NS}" -- vault kv get -field=token "${VAULT_PATH}" 2>/dev/null || echo "")
+                if [[ -n "${VAULT_CHECK}" ]]; then
+                  echo "Token already stored in Vault. Nothing to do."
+                  exit 0
+                else
+                  echo "Token exists in RHACS but not in Vault. Revoking and recreating..."
+                  curl -sk -u "admin:${RHACS_PASSWORD}" "${CENTRAL_URL}/v1/apitokens/revoke/${EXISTING_TOKEN}" \
+                    -X PATCH -H "Content-Type: application/json" > /dev/null
+                fi
+              fi
+
+              # Create API token
+              echo "Creating API token '${TOKEN_NAME}' with role '${TOKEN_ROLE}'..."
+              RESULT=$(curl -sk -u "admin:${RHACS_PASSWORD}" "${CENTRAL_URL}/v1/apitokens/generate" \
+                -X POST -H "Content-Type: application/json" \
+                -d "{\"name\":\"${TOKEN_NAME}\",\"roles\":[\"${TOKEN_ROLE}\"]}")
+
+              API_TOKEN=$(echo "${RESULT}" | python3 -c "
+              import sys, json
+              data = json.load(sys.stdin)
+              token = data.get('token', '')
+              if not token:
+                print('ERROR: No token in response', file=sys.stderr)
+                print(json.dumps(data, indent=2), file=sys.stderr)
+                sys.exit(1)
+              print(token)
+              ")
+
+              echo "API token created."
+
+              # Store in Vault
+              echo "Storing token in Vault at '${VAULT_PATH}'..."
+              oc exec "${VAULT_POD}" -n "${VAULT_NS}" -- vault kv put "${VAULT_PATH}" token="${API_TOKEN}"
+
+              echo "API token stored in Vault successfully."

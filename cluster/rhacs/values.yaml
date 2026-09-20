@@ -19,3 +19,4 @@ rhacs-sso-config:
     host: ""
   rhacs:
     adminEmail: admin@demo.redhat.com
+
