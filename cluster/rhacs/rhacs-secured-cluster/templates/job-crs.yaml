@@ -44,12 +44,13 @@ spec:
               done
               echo "Central API is available."
 
-              # Generate CRS
-              echo "Generating Cluster Registration Secret for '${CLUSTER_NAME}'..."
+              # Generate CRS with unique name to avoid conflicts with revoked entries
+              CRS_NAME="${CLUSTER_NAME}-$(date +%s)"
+              echo "Generating Cluster Registration Secret '${CRS_NAME}'..."
               CRS_RESPONSE=$(curl -sk -u "admin:${RHACS_PASSWORD}" \
                 "${CENTRAL_URL}/v1/cluster-init/crs" \
                 -X POST -H "Content-Type: application/json" \
-                -d "{\"name\":\"${CLUSTER_NAME}\"}")
+                -d "{\"name\":\"${CRS_NAME}\"}")
 
               CRS_BUNDLE=$(echo "${CRS_RESPONSE}" | python3 -c "
               import sys, json
