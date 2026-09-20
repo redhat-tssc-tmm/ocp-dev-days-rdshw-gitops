@@ -12,5 +12,3 @@ spec:
         enabled: true
     defaultTLSSecret:
       name: central-default-tls-cert
-  consolePlugin:
-    enabled: true
