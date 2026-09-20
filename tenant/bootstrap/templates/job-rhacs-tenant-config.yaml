@@ -1,0 +1,84 @@
+{{- $username := .Values.tenant.username -}}
+{{- $email := printf "%s@demo.redhat.com" $username -}}
+{{- $scopeName := printf "%s-scope" $username -}}
+{{- $roleName := printf "%s-analyst" $username -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "tenant-bootstrap.name" . }}-rhacs
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  backoffLimit: 30
+  template:
+    spec:
+      serviceAccountName: {{ include "tenant-bootstrap.name" . }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: rhacs-tenant-config
+          image: registry.redhat.io/openshift4/ose-cli-rhel9:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: USERNAME
+              value: {{ $username | quote }}
+            - name: RHACS_TENANT_CONFIG
+              value: |
+                name: {{ $scopeName }}
+                description: Access scope for {{ $username }}
+                rules:
+                  included:
+                    - cluster: local-secured-cluster
+                      namespaces:
+                        - {{ $username }}-dev
+                        - {{ $username }}-build
+                        - {{ $username }}-prod
+                        - {{ $username }}-parasol-payments
+                        - {{ $username }}-parasol-web
+                ---
+                name: {{ $roleName }}
+                description: Analyst role for {{ $username }}
+                permissionSet: Analyst
+                accessScope: {{ $scopeName }}
+                ---
+                name: Keycloak SSO
+                minimumRole: None
+                groups:
+                  - key: email
+                    value: {{ $email }}
+                    role: {{ $roleName }}
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+
+              RHACS_NS="rhacs"
+              CM_NAME="rhacs-tenant-config"
+              KEY="${USERNAME}.yaml"
+
+              if ! oc get configmap "${CM_NAME}" -n "${RHACS_NS}" &>/dev/null; then
+                echo "ConfigMap ${CM_NAME} not found in ${RHACS_NS} — RHACS not deployed, skipping."
+                exit 0
+              fi
+
+              EXISTING=$(oc get configmap "${CM_NAME}" -n "${RHACS_NS}" -o jsonpath="{.data['${KEY}']}" 2>/dev/null || echo "")
+              if [[ -n "${EXISTING}" ]]; then
+                echo "RHACS tenant config for '${USERNAME}' already exists, skipping."
+                exit 0
+              fi
+
+              echo "Adding RHACS tenant config for '${USERNAME}'..."
+
+              oc patch configmap "${CM_NAME}" -n "${RHACS_NS}" \
+                --type=merge \
+                -p "{\"data\":{\"${KEY}\": $(echo "${RHACS_TENANT_CONFIG}" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')}}"
+
+              echo "RHACS tenant config for '${USERNAME}' added successfully."
+      restartPolicy: OnFailure

@@ -13,5 +13,7 @@ spec:
     defaultTLSSecret:
       name: central-default-tls-cert
     declarativeConfiguration:
+      configMaps:
+        - name: rhacs-tenant-config
       secrets:
         - name: rhacs-declarative-auth

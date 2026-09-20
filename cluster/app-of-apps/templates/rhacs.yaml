@@ -7,6 +7,16 @@ spec:
     namespace: {{ .Values.rhacs.namespace }}
     server: https://kubernetes.default.svc
   project: default
+  ignoreDifferences:
+    - group: ""
+      kind: ConfigMap
+      name: rhacs-tenant-config
+      jqPathExpressions:
+        - .data
+    - group: platform.stackrox.io
+      kind: Central
+      jqPathExpressions:
+        - .spec.central.declarativeConfiguration
   source:
     path: cluster/rhacs
     repoURL: {{ .Values.gitops.repoURL }}
