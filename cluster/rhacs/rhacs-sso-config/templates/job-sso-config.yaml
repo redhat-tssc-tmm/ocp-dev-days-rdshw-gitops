@@ -18,15 +18,9 @@ spec:
           image: registry.redhat.io/openshift4/ose-cli-rhel9:latest
           env:
             - name: RHACS_CLIENT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: rhacs-sso-secret
-                  key: CLIENT_ID
+              value: {{ .Values.rhacs.clientId | quote }}
             - name: RHACS_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: rhacs-sso-secret
-                  key: CLIENT_SECRET
+              value: {{ .Values.rhacs.clientSecret | quote }}
           command:
             - /bin/bash
             - -c
@@ -39,11 +33,7 @@ spec:
               KC_HOST="{{ .Values.keycloak.host }}"
               ADMIN_EMAIL="{{ .Values.rhacs.adminEmail }}"
 
-              CENTRAL_URL="https://central.${NAMESPACE}.svc"
-              KEYCLOAK_ISSUER="https://${KC_HOST}/realms/${KC_REALM}"
-
-              # ---- Discover credentials ----
-              RHACS_PASSWORD=$(oc get secret central-htpasswd -n "${NAMESPACE}" -o jsonpath='{.data.password}' | base64 -d)
+              # ---- Discover Keycloak credentials ----
               KC_ADMIN_USER=$(oc get secret keycloak-initial-admin -n "${KC_NAMESPACE}" -o jsonpath='{.data.username}' | base64 -d)
               KC_ADMIN_PASS=$(oc get secret keycloak-initial-admin -n "${KC_NAMESPACE}" -o jsonpath='{.data.password}' | base64 -d)
 
@@ -66,22 +56,6 @@ spec:
                   "$@"
               }
 
-              rhacs_api() {
-                local method="$1" path="$2"
-                shift 2
-                curl -sk -u "admin:${RHACS_PASSWORD}" "${CENTRAL_URL}${path}" \
-                  -X "${method}" \
-                  -H "Content-Type: application/json" \
-                  "$@"
-              }
-
-              # ---- Wait for Central API ----
-              echo "Waiting for Central API..."
-              until rhacs_api GET "/v1/metadata" | grep -q '"version"'; do
-                sleep 10
-              done
-              echo "Central API is available."
-
               # ---- Wait for Keycloak ----
               echo "Waiting for Keycloak..."
               until curl -sk "https://${KC_HOST}/realms/${KC_REALM}/.well-known/openid-configuration" | grep -q '"issuer"'; do
@@ -89,7 +63,14 @@ spec:
               done
               echo "Keycloak is available."
 
-              CENTRAL_ROUTE=$(oc get route central -n "${NAMESPACE}" -o jsonpath='{.spec.host}')
+              # ---- Get Central route for redirect URI ----
+              CENTRAL_ROUTE=$(oc get route central -n "${NAMESPACE}" -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
+              if [[ -z "${CENTRAL_ROUTE}" ]]; then
+                echo "Waiting for Central route..."
+                until CENTRAL_ROUTE=$(oc get route central -n "${NAMESPACE}" -o jsonpath='{.spec.host}' 2>/dev/null) && [[ -n "${CENTRAL_ROUTE}" ]]; do
+                  sleep 10
+                done
+              fi
 
               # ---- Create Keycloak client ----
               EXISTING_CLIENT=$(kc_api GET "/clients" | python3 -c "
@@ -176,107 +157,9 @@ spec:
                 echo "WARNING: User '${ADMIN_EMAIL}' not found in Keycloak."
               fi
 
-              # ---- Create OIDC auth provider in RHACS ----
-              EXISTING_PROVIDER=$(rhacs_api GET "/v1/authProviders" | python3 -c "
-              import sys, json
-              data = json.load(sys.stdin)
-              providers = data.get('authProviders', [])
-              matches = [p['id'] for p in providers if p.get('name') == 'Keycloak SSO']
-              print(matches[0] if matches else '')
-              ")
-
-              if [[ -n "${EXISTING_PROVIDER}" ]]; then
-                echo "OIDC auth provider 'Keycloak SSO' already exists (ID: ${EXISTING_PROVIDER})."
-                AUTH_PROVIDER_ID="${EXISTING_PROVIDER}"
-              else
-                echo "Creating OIDC auth provider in RHACS..."
-                RESULT=$(rhacs_api POST "/v1/authProviders" -d "{
-                  \"name\": \"Keycloak SSO\",
-                  \"type\": \"oidc\",
-                  \"uiEndpoint\": \"${CENTRAL_ROUTE}\",
-                  \"enabled\": true,
-                  \"config\": {
-                    \"issuer\": \"${KEYCLOAK_ISSUER}\",
-                    \"client_id\": \"${RHACS_CLIENT_ID}\",
-                    \"client_secret\": \"${RHACS_CLIENT_SECRET}\",
-                    \"mode\": \"post\"
-                  }
-                }")
-
-                AUTH_PROVIDER_ID=$(echo "${RESULT}" | python3 -c "
-              import sys, json
-              data = json.load(sys.stdin)
-              print(data.get('id', ''))
-              ")
-
-                if [[ -z "${AUTH_PROVIDER_ID}" ]]; then
-                  echo "ERROR: Failed to create auth provider"
-                  echo "${RESULT}"
-                  exit 1
-                fi
-                echo "Auth provider created (ID: ${AUTH_PROVIDER_ID})."
-              fi
-
-              # ---- Map admin email to Admin role ----
-              EXISTING_ADMIN_MAPPING=$(rhacs_api GET "/v1/groups" | python3 -c "
-              import sys, json
-              data = json.load(sys.stdin)
-              groups = data.get('groups', [])
-              matches = [g['props'].get('id','') for g in groups
-                         if g.get('props',{}).get('authProviderId') == '${AUTH_PROVIDER_ID}'
-                         and g.get('props',{}).get('key') == 'email'
-                         and g.get('props',{}).get('value') == '${ADMIN_EMAIL}']
-              print(matches[0] if matches else '')
-              ")
-
-              if [[ -n "${EXISTING_ADMIN_MAPPING}" ]]; then
-                echo "Admin role mapping already exists."
-              else
-                echo "Mapping '${ADMIN_EMAIL}' to RHACS Admin role..."
-                rhacs_api POST "/v1/groups" -d "{
-                  \"props\": {
-                    \"authProviderId\": \"${AUTH_PROVIDER_ID}\",
-                    \"key\": \"email\",
-                    \"value\": \"${ADMIN_EMAIL}\"
-                  },
-                  \"roleName\": \"Admin\"
-                }" > /dev/null
-                echo "Admin role mapping created."
-              fi
-
-              # ---- Set default role for unmatched users ----
-              EXISTING_DEFAULT=$(rhacs_api GET "/v1/groups" | python3 -c "
-              import sys, json
-              data = json.load(sys.stdin)
-              groups = data.get('groups', [])
-              matches = [g['props'].get('id','') for g in groups
-                         if g.get('props',{}).get('authProviderId') == '${AUTH_PROVIDER_ID}'
-                         and (g.get('props',{}).get('key') is None or g.get('props',{}).get('key') == '')]
-              print(matches[0] if matches else '')
-              ")
-
-              if [[ -n "${EXISTING_DEFAULT}" ]]; then
-                echo "Default role mapping already exists."
-              else
-                echo "Setting default role 'None' for unmatched users..."
-                rhacs_api POST "/v1/groups" -d "{
-                  \"props\": {
-                    \"authProviderId\": \"${AUTH_PROVIDER_ID}\"
-                  },
-                  \"roleName\": \"None\"
-                }" > /dev/null
-                echo "Default role mapping created."
-              fi
-
               echo ""
               echo "=========================================="
-              echo " RHACS SSO configuration complete."
-              echo ""
-              echo "  Auth provider: Keycloak SSO"
-              echo "  Issuer:        ${KEYCLOAK_ISSUER}"
-              echo "  Client ID:     ${RHACS_CLIENT_ID}"
-              echo ""
-              echo "  Role mappings:"
-              echo "    ${ADMIN_EMAIL}  →  Admin"
-              echo "    (all other users)     →  None"
+              echo " Keycloak SSO client configuration complete."
+              echo "  Client ID: ${RHACS_CLIENT_ID}"
+              echo "  Redirect:  https://${CENTRAL_ROUTE}/sso/providers/oidc/callback"
               echo "=========================================="

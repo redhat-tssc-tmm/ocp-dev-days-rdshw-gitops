@@ -23,8 +23,13 @@ spec:
           clusterName: {{ .Values.rhacs.clusterName }}
         rhacs-sso-config:
           namespace: {{ .Values.rhacs.namespace }}
+          cluster:
+            subdomain: {{ .Values.cluster.subdomain }}
           keycloak:
             host: sso.{{ .Values.cluster.subdomain }}
             realm: sso
+          rhacs:
+            clientId: {{ .Values.vault.secrets.rhacs.clientId }}
+            clientSecret: {{ .Values.vault.secrets.rhacs.clientSecret }}
 {{ include "app-of-apps.syncPolicy" . | indent 2 }}
 {{- end }}

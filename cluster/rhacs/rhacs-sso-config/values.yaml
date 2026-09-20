@@ -1,5 +1,8 @@
 namespace: rhacs
 
+cluster:
+  subdomain: ""
+
 keycloak:
   namespace: keycloak
   realm: sso
@@ -7,6 +10,8 @@ keycloak:
 
 rhacs:
   adminEmail: admin@demo.redhat.com
+  clientId: rhacs
+  clientSecret: ""
 
 syncwave:
   externalSecret: "3"

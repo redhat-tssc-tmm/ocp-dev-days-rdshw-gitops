@@ -12,3 +12,6 @@ spec:
         enabled: true
     defaultTLSSecret:
       name: central-default-tls-cert
+    declarativeConfiguration:
+      secrets:
+        - name: rhacs-declarative-auth
