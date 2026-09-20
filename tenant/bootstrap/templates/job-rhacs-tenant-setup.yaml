@@ -5,7 +5,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "tenant-bootstrap.name" . }}-rhacs
+  name: {{ include "tenant-bootstrap.name" . }}-rhacs-setup
   annotations:
     argocd.argoproj.io/sync-wave: "1"
     argocd.argoproj.io/hook: Sync

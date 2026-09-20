@@ -1,0 +1,105 @@
+{{- $username := .Values.tenant.username -}}
+{{- $email := printf "%s@demo.redhat.com" $username -}}
+{{- $roleName := printf "%s-analyst" $username -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "tenant-bootstrap.name" . }}-rhacs-cleanup
+  annotations:
+    argocd.argoproj.io/hook: PreDelete
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      serviceAccountName: {{ include "tenant-bootstrap.name" . }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: rhacs-cleanup
+          image: registry.redhat.io/openshift4/ose-cli-rhel9:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: USERNAME
+              value: {{ $username | quote }}
+            - name: USER_EMAIL
+              value: {{ $email | quote }}
+            - name: ROLE_NAME
+              value: {{ $roleName | quote }}
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+
+              RHACS_NS="rhacs"
+              CM_NAME="rhacs-tenant-config"
+              KEY="${USERNAME}.yaml"
+
+              # --- Part 1: Remove declarative config (access scope + role) ---
+              if oc get configmap "${CM_NAME}" -n "${RHACS_NS}" &>/dev/null; then
+                EXISTING=$(oc get configmap "${CM_NAME}" -n "${RHACS_NS}" -o jsonpath="{.data['${KEY}']}" 2>/dev/null || echo "")
+                if [[ -n "${EXISTING}" ]]; then
+                  echo "Removing declarative config for '${USERNAME}'..."
+                  oc patch configmap "${CM_NAME}" -n "${RHACS_NS}" \
+                    --type=json \
+                    -p="[{\"op\":\"remove\",\"path\":\"/data/${KEY}\"}]" 2>/dev/null || true
+                  echo "Declarative config removed."
+                else
+                  echo "No declarative config found for '${USERNAME}'."
+                fi
+              else
+                echo "ConfigMap ${CM_NAME} not found — RHACS not deployed, skipping."
+                exit 0
+              fi
+
+              # --- Part 2: Remove group mapping via RHACS API ---
+              RHACS_PASSWORD=$(oc get secret central-htpasswd -n "${RHACS_NS}" -o jsonpath='{.data.password}' 2>/dev/null | base64 -d) || true
+              if [[ -z "${RHACS_PASSWORD}" ]]; then
+                echo "Central not found, skipping group mapping cleanup."
+                exit 0
+              fi
+
+              CENTRAL_URL="https://central.${RHACS_NS}.svc"
+
+              AUTH_PROVIDER_ID=$(curl -sk -u "admin:${RHACS_PASSWORD}" "${CENTRAL_URL}/v1/authProviders" | python3 -c "
+              import sys, json
+              data = json.load(sys.stdin)
+              providers = data.get('authProviders', [])
+              matches = [p['id'] for p in providers if p.get('name') == 'Keycloak SSO']
+              print(matches[0] if matches else '')
+              " 2>/dev/null || echo "")
+
+              if [[ -z "${AUTH_PROVIDER_ID}" ]]; then
+                echo "Auth provider not found, skipping group mapping cleanup."
+                exit 0
+              fi
+
+              MAPPING_ID=$(curl -sk -u "admin:${RHACS_PASSWORD}" "${CENTRAL_URL}/v1/groups" | python3 -c "
+              import sys, json
+              data = json.load(sys.stdin)
+              groups = data.get('groups', [])
+              matches = [g['props'].get('id','') for g in groups
+                         if g.get('props',{}).get('authProviderId') == '${AUTH_PROVIDER_ID}'
+                         and g.get('props',{}).get('key') == 'email'
+                         and g.get('props',{}).get('value') == '${USER_EMAIL}']
+              print(matches[0] if matches else '')
+              " 2>/dev/null || echo "")
+
+              if [[ -n "${MAPPING_ID}" ]]; then
+                echo "Removing group mapping for '${USER_EMAIL}'..."
+                curl -sk -u "admin:${RHACS_PASSWORD}" "${CENTRAL_URL}/v1/groups/${MAPPING_ID}" \
+                  -X DELETE > /dev/null
+                echo "Group mapping removed."
+              else
+                echo "No group mapping found for '${USER_EMAIL}'."
+              fi
+
+              echo "RHACS cleanup for '${USERNAME}' complete."
+      restartPolicy: Never
