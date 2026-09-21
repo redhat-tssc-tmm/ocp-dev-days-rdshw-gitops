@@ -3,6 +3,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: rhda-backend-postgresql
+  namespace: {{ .Values.namespace }}
   labels:
     app: rhda-backend-postgresql
   annotations:

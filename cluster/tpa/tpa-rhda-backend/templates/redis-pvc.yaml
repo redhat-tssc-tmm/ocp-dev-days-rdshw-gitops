@@ -3,6 +3,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: rhda-backend-redis
+  namespace: {{ .Values.namespace }}
   labels:
     app: rhda-backend-redis
   annotations:

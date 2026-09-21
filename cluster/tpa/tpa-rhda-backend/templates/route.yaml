@@ -3,6 +3,7 @@ apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
   name: rhda-backend
+  namespace: {{ .Values.namespace }}
   labels:
     app: rhda-backend
   annotations:
