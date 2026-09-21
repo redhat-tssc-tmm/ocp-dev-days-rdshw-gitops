@@ -1,0 +1,94 @@
+apiVersion: rhtas.redhat.com/v1alpha1
+kind: Securesign
+metadata:
+  name: {{ .Values.instance }}
+  namespace: {{ include "rhtas-instance.namespace" . }}
+  annotations:
+    rhtas.redhat.com/metrics: 'true'
+    argocd.argoproj.io/sync-wave: {{ .Values.syncwave.securesign | quote }}
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  fulcio:
+    certificate:
+      commonName: fulcio.hostname
+      organizationEmail: {{ .Values.rootCert.email }}
+      organizationName: {{ .Values.rootCert.org }}
+    config:
+      OIDCIssuers:
+        - ClientID: {{ .Values.oidc.clientId }}
+          Issuer: 'https://{{ .Values.oidc.issuer }}'
+          IssuerURL: 'https://{{ .Values.oidc.issuer }}'
+          Type: email
+    ctlog:
+      port: 80
+      prefix: trusted-artifact-signer
+    externalAccess:
+      enabled: true
+    monitoring:
+      enabled: true
+  rekor:
+    monitoring:
+      enabled: true
+    signer:
+      kms: secret
+    trillian:
+      port: 8091
+    externalAccess:
+      enabled: true
+    backFillRedis:
+      enabled: true
+      schedule: 0 0 * * *
+    rekorSearchUI:
+      enabled: true
+    pvc:
+      accessModes:
+        - ReadWriteOnce
+      retain: true
+      size: 5Gi
+  trillian:
+    database:
+      create: true
+      pvc:
+        accessModes:
+          - ReadWriteOnce
+        retain: true
+        size: 5Gi
+    monitoring:
+      enabled: true
+  tsa:
+    externalAccess:
+      enabled: true
+    monitoring:
+      enabled: true
+    ntpMonitoring:
+      enabled: true
+    signer:
+      certificateChain:
+        intermediateCA:
+          - commonName: tsa.hostname
+            organizationEmail: {{ .Values.rootCert.email }}
+            organizationName: {{ .Values.rootCert.org }}
+        leafCA:
+          commonName: tsa.hostname
+          organizationEmail: {{ .Values.rootCert.email }}
+          organizationName: {{ .Values.rootCert.org }}
+        rootCA:
+          commonName: tsa.hostname
+          organizationEmail: {{ .Values.rootCert.email }}
+          organizationName: {{ .Values.rootCert.org }}
+  tuf:
+    externalAccess:
+      enabled: true
+    keys:
+      - name: rekor.pub
+      - name: ctfe.pub
+      - name: fulcio_v1.crt.pem
+      - name: tsa.certchain.pem
+    port: 80
+    pvc:
+      accessModes:
+        - ReadWriteOnce
+      retain: true
+      size: 100Mi
+    rootKeySecretRef:
+      name: tuf-root-keys

@@ -122,6 +122,15 @@ rhacs:
   operatorNamespace: rhacs-operator
   clusterName: local-secured-cluster
 
+rhtas:
+  enabled: true
+  name: rhtas
+  namespace: trusted-artifact-signer
+  instance: securesign
+  rootCert:
+    email: admin@rhdemo.com
+    org: Parasol
+
 tpa:
   enabled: true
   name: tpa

@@ -1,0 +1,5 @@
+apiVersion: v2
+name: rhtas-instance
+description: RHTAS Securesign instance with Keycloak and cosign key generation
+type: application
+version: 0.1.0

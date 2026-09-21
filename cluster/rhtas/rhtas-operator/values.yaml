@@ -1,0 +1,8 @@
+namespace: trusted-artifact-signer
+
+subscription:
+  channel: stable
+  installPlanApproval: Automatic
+  name: rhtas-operator
+  source: redhat-operators-snapshot
+  sourceNamespace: openshift-marketplace

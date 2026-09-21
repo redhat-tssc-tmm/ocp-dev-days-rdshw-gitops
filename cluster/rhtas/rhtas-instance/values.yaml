@@ -1,0 +1,24 @@
+namespace: trusted-artifact-signer
+instance: securesign
+
+oidc:
+  issuer: ""
+  clientId: trusted-artifact-signer
+
+keycloak:
+  namespace: keycloak
+  host: ""
+  realm: sso
+
+rootCert:
+  email: admin@rhdemo.com
+  org: Parasol
+
+vault:
+  namespace: vault
+  podName: vault-0
+
+syncwave:
+  keycloakJob: "0"
+  securesign: "1"
+  cosignJob: "3"

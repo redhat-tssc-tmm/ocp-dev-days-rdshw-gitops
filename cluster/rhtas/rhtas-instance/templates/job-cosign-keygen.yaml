@@ -1,0 +1,79 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cosign-keygen
+  namespace: {{ include "rhtas-instance.namespace" . }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ .Values.syncwave.cosignJob | quote }}
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 30
+  template:
+    spec:
+      serviceAccountName: rhtas-setup
+      restartPolicy: OnFailure
+      containers:
+        - name: cosign-keygen
+          image: registry.redhat.io/openshift4/ose-cli-rhel9:latest
+          env:
+            - name: VAULT_NAMESPACE
+              value: {{ .Values.vault.namespace | quote }}
+            - name: VAULT_POD
+              value: {{ .Values.vault.podName | quote }}
+            - name: RHTAS_NAMESPACE
+              value: {{ include "rhtas-instance.namespace" . | quote }}
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+
+              # Wait for Vault KV engine to be ready
+              echo "Waiting for Vault..."
+              until oc exec "${VAULT_POD}" -n "${VAULT_NAMESPACE}" -- vault kv list kv/secrets 2>/dev/null; do
+                echo "Vault KV engine not ready, retrying in 10s..."
+                sleep 10
+              done
+              echo "Vault is ready."
+
+              # Check if keys already exist
+              echo "Checking if cosign keys already exist in Vault..."
+              EXISTING=$(oc exec "${VAULT_POD}" -n "${VAULT_NAMESPACE}" -- vault kv get -field=value kv/secrets/rhtas/cosign-public-key 2>/dev/null || echo "")
+              if [[ -n "${EXISTING}" ]]; then
+                echo "Cosign keys already exist in Vault, skipping."
+                exit 0
+              fi
+
+              # Wait for cli-server to be ready
+              echo "Waiting for cli-server..."
+              until curl -sf "http://cli-server.${RHTAS_NAMESPACE}.svc:8080/clients/linux/cosign-amd64.gz" -o /dev/null; do
+                echo "cli-server not ready, retrying in 10s..."
+                sleep 10
+              done
+              echo "cli-server is ready."
+
+              # Download cosign
+              echo "Downloading cosign..."
+              curl -sL "http://cli-server.${RHTAS_NAMESPACE}.svc:8080/clients/linux/cosign-amd64.gz" | gunzip > /tmp/cosign
+              chmod +x /tmp/cosign
+
+              # Generate key pair
+              echo "Generating cosign key pair..."
+              cd /tmp
+              COSIGN_PASSWORD="" /tmp/cosign generate-key-pair
+
+              PRIVATE_KEY=$(cat /tmp/cosign.key)
+              PUBLIC_KEY=$(cat /tmp/cosign.pub)
+
+              if [[ -z "${PRIVATE_KEY}" ]] || [[ -z "${PUBLIC_KEY}" ]]; then
+                echo "ERROR: Failed to generate cosign key pair"
+                exit 1
+              fi
+
+              # Store keys in Vault
+              echo "Storing cosign keys in Vault..."
+              oc exec "${VAULT_POD}" -n "${VAULT_NAMESPACE}" -- vault kv put kv/secrets/rhtas/cosign-private-key value="${PRIVATE_KEY}"
+              oc exec "${VAULT_POD}" -n "${VAULT_NAMESPACE}" -- vault kv put kv/secrets/rhtas/cosign-public-key value="${PUBLIC_KEY}"
+
+              echo "Cosign keys generated and stored in Vault successfully."

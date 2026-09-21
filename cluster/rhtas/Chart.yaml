@@ -1,0 +1,13 @@
+apiVersion: v2
+name: rhtas
+description: Red Hat Trusted Artifact Signer with Keycloak SSO
+type: application
+version: 0.1.0
+
+dependencies:
+  - name: rhtas-operator
+    version: 0.1.0
+    repository: file://rhtas-operator
+  - name: rhtas-instance
+    version: 0.1.0
+    repository: file://rhtas-instance

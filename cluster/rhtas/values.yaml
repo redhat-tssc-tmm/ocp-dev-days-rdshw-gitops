@@ -1,0 +1,17 @@
+rhtas-operator:
+  namespace: trusted-artifact-signer
+  subscription:
+    source: redhat-operators-snapshot
+
+rhtas-instance:
+  namespace: trusted-artifact-signer
+  instance: securesign
+  oidc:
+    issuer: ""
+    clientId: trusted-artifact-signer
+  rootCert:
+    email: admin@rhdemo.com
+    org: Parasol
+  vault:
+    namespace: vault
+    podName: vault-0
