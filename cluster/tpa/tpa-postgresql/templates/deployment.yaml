@@ -1,0 +1,89 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tpa-postgresql
+  labels:
+    app: tpa-postgresql
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tpa-postgresql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: tpa-postgresql
+    spec:
+      containers:
+        - name: postgresql
+          image: {{ .Values.image }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5432
+              protocol: TCP
+          env:
+            - name: POSTGRESQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: tpa-postgresql-credentials
+                  key: db.user
+            - name: POSTGRESQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: tpa-postgresql-credentials
+                  key: db.password
+            - name: POSTGRESQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: tpa-postgresql-credentials
+                  key: db.name
+            - name: POSTGRESQL_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: tpa-postgresql-credentials
+                  key: db.adminpassword
+            - name: POSTGRESQL_SHARED_BUFFERS
+              value: {{ .Values.tuning.sharedBuffers | quote }}
+            - name: POSTGRESQL_EFFECTIVE_CACHE_SIZE
+              value: {{ .Values.tuning.effectiveCacheSize | quote }}
+          volumeMounts:
+            - name: postgresql-data
+              mountPath: /var/lib/pgsql/data
+            - name: pgsql-tuning
+              mountPath: /opt/app-root/src/postgresql-cfg
+          livenessProbe:
+            exec:
+              command:
+                - /usr/libexec/check-container
+                - --live
+            initialDelaySeconds: 120
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 10
+          readinessProbe:
+            exec:
+              command:
+                - /usr/libexec/check-container
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 1
+            failureThreshold: 10
+          resources:
+            limits:
+              memory: {{ .Values.resources.limits.memory }}
+              cpu: {{ .Values.resources.limits.cpu }}
+            requests:
+              memory: {{ .Values.resources.requests.memory }}
+              cpu: {{ .Values.resources.requests.cpu }}
+      volumes:
+        - name: postgresql-data
+          persistentVolumeClaim:
+            claimName: tpa-postgresql-data
+        - name: pgsql-tuning
+          configMap:
+            name: tpa-pgsql-tuning

@@ -1,0 +1,4 @@
+namespace: trusted-profile-analyzer
+
+image: quay.io/tssc_demos/tpa-db-monitor:latest
+routeHost: ""

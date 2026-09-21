@@ -1,0 +1,121 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tpa-server
+  namespace: {{ .Values.argocd.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  labels:
+    app.kubernetes.io/part-of: tpa
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io/foreground
+spec:
+  project: default
+  source:
+    repoURL: https://charts.openshift.io/
+    chart: redhat-trusted-profile-analyzer
+    targetRevision: {{ .Values.chartVersion | quote }}
+    helm:
+      valuesObject:
+        openshift:
+          enabled: true
+        appDomain: -{{ .Values.namespace }}.{{ .Values.subdomain }}
+        ingress:
+          className: openshift-default
+          additionalAnnotations:
+            haproxy.router.openshift.io/timeout: "5m"
+        storage:
+          type: s3
+          region: https://s3-openshift-storage.{{ .Values.subdomain }}:443
+          bucket: {{ .Values.objectBucketClaim.bucketName }}
+          accessKey:
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.objectBucketClaim.name }}
+                key: AWS_ACCESS_KEY_ID
+          secretKey:
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.objectBucketClaim.name }}
+                key: AWS_SECRET_ACCESS_KEY
+        database:
+          host:
+            valueFrom:
+              secretKeyRef:
+                name: tpa-postgresql-credentials
+                key: db.host
+          port:
+            valueFrom:
+              secretKeyRef:
+                name: tpa-postgresql-credentials
+                key: db.port
+          name:
+            valueFrom:
+              secretKeyRef:
+                name: tpa-postgresql-credentials
+                key: db.name
+          username:
+            valueFrom:
+              secretKeyRef:
+                name: tpa-postgresql-credentials
+                key: db.user
+          password:
+            valueFrom:
+              secretKeyRef:
+                name: tpa-postgresql-credentials
+                key: db.password
+        createDatabase:
+          name:
+            valueFrom:
+              secretKeyRef:
+                name: tpa-postgresql-credentials
+                key: db.name
+          username:
+            valueFrom:
+              secretKeyRef:
+                name: tpa-postgresql-credentials
+                key: db.admin
+          password:
+            valueFrom:
+              secretKeyRef:
+                name: tpa-postgresql-credentials
+                key: db.adminpassword
+        migrateDatabase:
+          username:
+            valueFrom:
+              secretKeyRef:
+                name: tpa-postgresql-credentials
+                key: db.admin
+          password:
+            valueFrom:
+              secretKeyRef:
+                name: tpa-postgresql-credentials
+                key: db.adminpassword
+        modules:
+          createDatabase:
+            enabled: {{ .Values.modules.createDatabase.enabled }}
+          migrateDatabase:
+            enabled: {{ .Values.modules.migrateDatabase.enabled }}
+          createImporters:
+            {{- toYaml .Values.modules.createImporters | nindent 12 }}
+        oidc:
+          issuerUrl: https://{{ .Values.keycloak.host }}/realms/{{ .Values.keycloak.realm }}
+          clients:
+            frontend:
+              clientId: {{ .Values.oidc.frontendClientId }}
+            cli:
+              clientId: {{ .Values.oidc.cliClientId }}
+              clientSecret:
+                valueFrom:
+                  secretKeyRef:
+                    name: oidc-cli
+                    key: client-secret
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.namespace }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

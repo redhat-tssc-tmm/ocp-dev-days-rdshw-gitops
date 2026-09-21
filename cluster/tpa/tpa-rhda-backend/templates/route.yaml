@@ -1,0 +1,21 @@
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: rhda-backend
+  labels:
+    app: rhda-backend
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  {{- if .Values.routeHost }}
+  host: {{ .Values.routeHost }}
+  {{- end }}
+  to:
+    kind: Service
+    name: rhda-backend
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

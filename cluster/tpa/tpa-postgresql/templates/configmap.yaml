@@ -1,0 +1,17 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tpa-pgsql-tuning
+  labels:
+    app: tpa-postgresql
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+data:
+  wal-tuning.conf: |
+    max_wal_size = '{{ .Values.tuning.maxWalSize }}'
+    min_wal_size = '{{ .Values.tuning.minWalSize }}'
+    wal_buffers = '{{ .Values.tuning.walBuffers }}'
+    maintenance_work_mem = '{{ .Values.tuning.maintenanceWorkMem }}'
+    work_mem = '{{ .Values.tuning.workMem }}'
+    max_connections = {{ .Values.tuning.maxConnections | default 200 }}

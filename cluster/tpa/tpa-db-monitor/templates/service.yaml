@@ -1,0 +1,16 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tpa-db-monitor
+  labels:
+    app: tpa-db-monitor
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  selector:
+    app: tpa-db-monitor
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP

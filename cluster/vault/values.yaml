@@ -27,6 +27,8 @@ secrets:
   rhacs:
     clientId: rhacs
     clientSecret: ""
+  tpa:
+    clientSecret: ""
   rhdh:
     argocdPassword: ""
     postgresqlPassword: ""

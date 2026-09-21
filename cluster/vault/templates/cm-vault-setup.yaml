@@ -132,3 +132,6 @@ data:
 {{- if $.Values.secrets.rhacs.clientSecret }}
             - 'vault kv put kv/secrets/rhacs/client-secret clientId={{ $.Values.secrets.rhacs.clientId }} clientSecret={{ $.Values.secrets.rhacs.clientSecret }}'
 {{- end }}
+{{- if $.Values.secrets.tpa.clientSecret }}
+            - 'vault kv put kv/secrets/tpa/client-secret clientSecret={{ $.Values.secrets.tpa.clientSecret }}'
+{{- end }}

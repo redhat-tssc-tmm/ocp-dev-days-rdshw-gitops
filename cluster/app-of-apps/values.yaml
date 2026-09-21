@@ -46,6 +46,9 @@ vault:
     rhacs:
       clientId: rhacs
       clientSecret: "00ifaFXkWfrNZwrqvzYZwyBhjkEWBzA6"
+    # DEV ONLY — in production, pass clientSecret from the automation repo
+    tpa:
+      clientSecret: "SuTQThQk-68Lu-d7U1-R0co-ze2DBZ9EDPxP"
 
 externalSecrets:
   name: external-secrets
@@ -118,3 +121,16 @@ rhacs:
   namespace: rhacs
   operatorNamespace: rhacs-operator
   clusterName: local-secured-cluster
+
+tpa:
+  enabled: true
+  name: tpa
+  namespace: trusted-profile-analyzer
+  rhdaNamespace: rhda-backend
+  chartVersion: "*"
+  images:
+    dbMonitor: quay.io/tssc_demos/tpa-db-monitor:latest
+    rhdaBackend: quay.io/tssc_demos/trustify-dependency-analytics:v3.1.0
+    rhdaInitImage: registry.redhat.io/ubi9/openjdk-21-runtime:1.23
+    postgresql: registry.redhat.io/rhel10/postgresql-18
+    dataset: registry.redhat.io/ubi9/ubi

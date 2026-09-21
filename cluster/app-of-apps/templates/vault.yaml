@@ -45,6 +45,8 @@ spec:
           rhacs:
             clientId: {{ .Values.vault.secrets.rhacs.clientId | quote }}
             clientSecret: {{ .Values.vault.secrets.rhacs.clientSecret | quote }}
+          tpa:
+            clientSecret: {{ .Values.vault.secrets.tpa.clientSecret | quote }}
   syncPolicy:
     automated: {}
     syncOptions:

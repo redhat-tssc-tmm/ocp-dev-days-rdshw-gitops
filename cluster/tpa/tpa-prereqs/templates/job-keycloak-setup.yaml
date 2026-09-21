@@ -1,0 +1,290 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: tpa-keycloak-setup
+  namespace: {{ include "tpa-prereqs.namespace" . }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ .Values.syncwave.keycloakJob | quote }}
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 30
+  template:
+    spec:
+      serviceAccountName: tpa-setup
+      restartPolicy: OnFailure
+      containers:
+        - name: keycloak-setup
+          image: registry.redhat.io/openshift4/ose-cli-rhel9:latest
+          env:
+            - name: TPA_CLIENT_SECRET
+              value: {{ .Values.oidc.clientSecret | quote }}
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+
+              KC_NAMESPACE="{{ .Values.keycloak.namespace }}"
+              KC_HOST="{{ .Values.keycloak.host }}"
+              KC_REALM="{{ .Values.keycloak.realm }}"
+              CLI_CLIENT_ID="{{ .Values.oidc.clientId }}"
+              FRONTEND_CLIENT_ID="{{ .Values.oidc.frontendClientId }}"
+              ADMIN_EMAIL="{{ .Values.adminEmail }}"
+
+              # ---- Discover Keycloak credentials ----
+              KC_ADMIN_USER=$(oc get secret keycloak-initial-admin -n "${KC_NAMESPACE}" -o jsonpath='{.data.username}' | base64 -d)
+              KC_ADMIN_PASS=$(oc get secret keycloak-initial-admin -n "${KC_NAMESPACE}" -o jsonpath='{.data.password}' | base64 -d)
+
+              kc_token() {
+                curl -sk "https://${KC_HOST}/realms/master/protocol/openid-connect/token" \
+                  -d "client_id=admin-cli" \
+                  -d "username=${KC_ADMIN_USER}" \
+                  -d "password=${KC_ADMIN_PASS}" \
+                  -d "grant_type=password" | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])"
+              }
+
+              kc_api() {
+                local method="$1" path="$2"
+                shift 2
+                curl -sk "https://${KC_HOST}/admin/realms/${KC_REALM}${path}" \
+                  -H "Authorization: Bearer $(kc_token)" \
+                  -H "Content-Type: application/json" \
+                  -X "${method}" \
+                  "$@"
+              }
+
+              echo "Waiting for Keycloak..."
+              until curl -sk "https://${KC_HOST}/realms/${KC_REALM}/.well-known/openid-configuration" | grep -q '"issuer"'; do
+                sleep 10
+              done
+              echo "Keycloak is available."
+
+              # ---- Step 1: Create custom client scopes ----
+              echo "Creating client scopes..."
+              for SCOPE_NAME in "create:document" "read:document" "update:document" "delete:document"; do
+                EXISTS=$(kc_api GET "/client-scopes" | python3 -c "
+              import sys, json
+              scopes = json.load(sys.stdin)
+              print('yes' if any(s['name'] == '${SCOPE_NAME}' for s in scopes) else '')
+              ")
+                if [[ -n "${EXISTS}" ]]; then
+                  echo "  Scope '${SCOPE_NAME}' already exists."
+                else
+                  kc_api POST "/client-scopes" -d "{
+                    \"name\": \"${SCOPE_NAME}\",
+                    \"protocol\": \"openid-connect\",
+                    \"attributes\": {
+                      \"include.in.token.scope\": \"true\",
+                      \"display.on.consent.screen\": \"true\",
+                      \"include.in.openid.provider.metadata\": \"true\"
+                    }
+                  }" -o /dev/null
+                  echo "  Created scope '${SCOPE_NAME}'."
+                fi
+              done
+
+              # ---- Step 2: Create tpa-admin realm role ----
+              echo "Creating tpa-admin realm role..."
+              ROLE_EXISTS=$(kc_api GET "/roles" | python3 -c "
+              import sys, json
+              roles = json.load(sys.stdin)
+              print('yes' if any(r['name'] == 'tpa-admin' for r in roles) else '')
+              ")
+              if [[ -n "${ROLE_EXISTS}" ]]; then
+                echo "  Role 'tpa-admin' already exists."
+              else
+                kc_api POST "/roles" -d '{"name":"tpa-admin","description":"TPA administrator role"}' -o /dev/null
+                echo "  Created role 'tpa-admin'."
+              fi
+
+              # ---- Step 3: Configure scope mappings ----
+              # Only update:document and delete:document require tpa-admin role
+              # create:document and read:document are available to ALL users
+              echo "Configuring scope mappings..."
+              TPA_ADMIN_ROLE=$(kc_api GET "/roles/tpa-admin")
+
+              for SCOPE_NAME in "update:document" "delete:document"; do
+                SCOPE_ID=$(kc_api GET "/client-scopes" | python3 -c "
+              import sys, json
+              scopes = json.load(sys.stdin)
+              matches = [s['id'] for s in scopes if s['name'] == '${SCOPE_NAME}']
+              print(matches[0] if matches else '')
+              ")
+                if [[ -n "${SCOPE_ID}" ]]; then
+                  kc_api POST "/client-scopes/${SCOPE_ID}/scope-mappings/realm" \
+                    -d "[${TPA_ADMIN_ROLE}]" -o /dev/null 2>/dev/null || true
+                  echo "  Scope mapping: ${SCOPE_NAME} → tpa-admin"
+                fi
+              done
+
+              # ---- Step 4: Create tpa-frontend client (public) ----
+              echo "Creating tpa-frontend client..."
+              EXISTING_FRONTEND=$(kc_api GET "/clients" | python3 -c "
+              import sys, json
+              clients = json.load(sys.stdin)
+              matches = [c['id'] for c in clients if c.get('clientId') == '${FRONTEND_CLIENT_ID}']
+              print(matches[0] if matches else '')
+              ")
+
+              if [[ -n "${EXISTING_FRONTEND}" ]]; then
+                echo "  Client '${FRONTEND_CLIENT_ID}' already exists."
+                FRONTEND_UUID="${EXISTING_FRONTEND}"
+              else
+                kc_api POST "/clients" -d "{
+                  \"clientId\": \"${FRONTEND_CLIENT_ID}\",
+                  \"name\": \"TPA UI Client\",
+                  \"description\": \"User Authn and Authz for the TPA Frontend\",
+                  \"protocol\": \"openid-connect\",
+                  \"publicClient\": true,
+                  \"standardFlowEnabled\": true,
+                  \"implicitFlowEnabled\": true,
+                  \"directAccessGrantsEnabled\": false,
+                  \"serviceAccountsEnabled\": false,
+                  \"fullScopeAllowed\": true,
+                  \"redirectUris\": [\"*\"],
+                  \"webOrigins\": [\"*\"],
+                  \"attributes\": {
+                    \"access.token.lifespan\": \"300\",
+                    \"post.logout.redirect.uris\": \"+\"
+                  }
+                }" -o /dev/null
+                FRONTEND_UUID=$(kc_api GET "/clients" | python3 -c "
+              import sys, json
+              clients = json.load(sys.stdin)
+              matches = [c['id'] for c in clients if c.get('clientId') == '${FRONTEND_CLIENT_ID}']
+              print(matches[0] if matches else '')
+              ")
+                echo "  Created client '${FRONTEND_CLIENT_ID}' (UUID: ${FRONTEND_UUID})."
+              fi
+
+              # ---- Step 5: Create tpa-cli client (confidential) ----
+              echo "Creating tpa-cli client..."
+              EXISTING_CLI=$(kc_api GET "/clients" | python3 -c "
+              import sys, json
+              clients = json.load(sys.stdin)
+              matches = [c['id'] for c in clients if c.get('clientId') == '${CLI_CLIENT_ID}']
+              print(matches[0] if matches else '')
+              ")
+
+              if [[ -n "${EXISTING_CLI}" ]]; then
+                echo "  Client '${CLI_CLIENT_ID}' already exists."
+                CLI_UUID="${EXISTING_CLI}"
+              else
+                kc_api POST "/clients" -d "{
+                  \"clientId\": \"${CLI_CLIENT_ID}\",
+                  \"name\": \"TPA cli Client\",
+                  \"description\": \"OIDC Service Account Authn and Authz for the TPA Rest API\",
+                  \"protocol\": \"openid-connect\",
+                  \"publicClient\": false,
+                  \"standardFlowEnabled\": false,
+                  \"implicitFlowEnabled\": false,
+                  \"directAccessGrantsEnabled\": false,
+                  \"serviceAccountsEnabled\": true,
+                  \"fullScopeAllowed\": true,
+                  \"secret\": \"${TPA_CLIENT_SECRET}\",
+                  \"attributes\": {
+                    \"access.token.lifespan\": \"300\",
+                    \"post.logout.redirect.uris\": \"+\"
+                  }
+                }" -o /dev/null
+                CLI_UUID=$(kc_api GET "/clients" | python3 -c "
+              import sys, json
+              clients = json.load(sys.stdin)
+              matches = [c['id'] for c in clients if c.get('clientId') == '${CLI_CLIENT_ID}']
+              print(matches[0] if matches else '')
+              ")
+                echo "  Created client '${CLI_CLIENT_ID}' (UUID: ${CLI_UUID})."
+              fi
+
+              # ---- Step 6: Assign default client scopes to both clients ----
+              echo "Assigning default client scopes..."
+              for SCOPE_NAME in "create:document" "read:document" "update:document" "delete:document"; do
+                SCOPE_ID=$(kc_api GET "/client-scopes" | python3 -c "
+              import sys, json
+              scopes = json.load(sys.stdin)
+              matches = [s['id'] for s in scopes if s['name'] == '${SCOPE_NAME}']
+              print(matches[0] if matches else '')
+              ")
+                if [[ -n "${SCOPE_ID}" ]]; then
+                  kc_api PUT "/clients/${FRONTEND_UUID}/default-client-scopes/${SCOPE_ID}" -o /dev/null 2>/dev/null || true
+                  kc_api PUT "/clients/${CLI_UUID}/default-client-scopes/${SCOPE_ID}" -o /dev/null 2>/dev/null || true
+                fi
+              done
+              echo "  Default scopes assigned."
+
+              # ---- Step 7: Assign tpa-admin role to admin user ----
+              echo "Assigning tpa-admin role to admin user..."
+              ADMIN_USER_ID=$(kc_api GET "/users?email=${ADMIN_EMAIL}&exact=true" | python3 -c "
+              import sys, json
+              users = json.load(sys.stdin)
+              print(users[0]['id'] if users else '')
+              ")
+
+              if [[ -n "${ADMIN_USER_ID}" ]]; then
+                kc_api POST "/users/${ADMIN_USER_ID}/role-mappings/realm" \
+                  -d "[${TPA_ADMIN_ROLE}]" -o /dev/null 2>/dev/null || true
+                echo "  tpa-admin role assigned to ${ADMIN_EMAIL}."
+              else
+                echo "  WARNING: User '${ADMIN_EMAIL}' not found."
+              fi
+
+              # ---- Step 8: Assign tpa-admin role to tpa-cli service account ----
+              echo "Assigning tpa-admin role to tpa-cli service account..."
+              SA_USER_ID=$(kc_api GET "/users?username=service-account-${CLI_CLIENT_ID}&exact=true" | python3 -c "
+              import sys, json
+              users = json.load(sys.stdin)
+              print(users[0]['id'] if users else '')
+              ")
+
+              if [[ -n "${SA_USER_ID}" ]]; then
+                kc_api POST "/users/${SA_USER_ID}/role-mappings/realm" \
+                  -d "[${TPA_ADMIN_ROLE}]" -o /dev/null 2>/dev/null || true
+                echo "  tpa-admin role assigned to service account."
+              else
+                echo "  WARNING: tpa-cli service account user not found."
+              fi
+
+              echo ""
+              echo "=========================================="
+              echo " TPA Keycloak setup complete."
+              echo "  Realm:    ${KC_REALM}"
+              echo "  Frontend: ${FRONTEND_CLIENT_ID} (public)"
+              echo "  CLI:      ${CLI_CLIENT_ID} (confidential)"
+              echo "  Scopes:   create:document, read:document (all users)"
+              echo "            update:document, delete:document (tpa-admin only)"
+              echo "=========================================="
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tpa-setup
+  namespace: {{ include "tpa-prereqs.namespace" . }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ .Values.syncwave.prereqs | quote }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tpa-setup
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ .Values.syncwave.prereqs | quote }}
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tpa-setup
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ .Values.syncwave.prereqs | quote }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tpa-setup
+subjects:
+  - kind: ServiceAccount
+    name: tpa-setup
+    namespace: {{ include "tpa-prereqs.namespace" . }}
