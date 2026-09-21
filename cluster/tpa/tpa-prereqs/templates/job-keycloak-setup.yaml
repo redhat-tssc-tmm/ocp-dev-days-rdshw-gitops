@@ -99,12 +99,12 @@ spec:
               fi
 
               # ---- Step 3: Configure scope mappings ----
-              # Only update:document and delete:document require tpa-admin role
-              # create:document and read:document are available to ALL users
+              # create:document, update:document and delete:document require tpa-admin role
+              # read:document is available to ALL users
               echo "Configuring scope mappings..."
               TPA_ADMIN_ROLE=$(kc_api GET "/roles/tpa-admin")
 
-              for SCOPE_NAME in "update:document" "delete:document"; do
+              for SCOPE_NAME in "create:document" "update:document" "delete:document"; do
                 SCOPE_ID=$(kc_api GET "/client-scopes" | python3 -c "
               import sys, json
               scopes = json.load(sys.stdin)
@@ -251,8 +251,8 @@ spec:
               echo "  Realm:    ${KC_REALM}"
               echo "  Frontend: ${FRONTEND_CLIENT_ID} (public)"
               echo "  CLI:      ${CLI_CLIENT_ID} (confidential)"
-              echo "  Scopes:   create:document, read:document (all users)"
-              echo "            update:document, delete:document (tpa-admin only)"
+              echo "  Scopes:   read:document (all users)"
+              echo "            create:document, update:document, delete:document (tpa-admin only)"
               echo "=========================================="
 ---
 apiVersion: v1
