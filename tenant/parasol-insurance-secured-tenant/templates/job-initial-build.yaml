@@ -1,0 +1,74 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "parasol-insurance-secured-tenant.prefix" . }}-secured-initial-build
+  namespace: {{ include "parasol-insurance-secured-tenant.prefix" . }}-secured-build
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: parasol-insurance-secured-build
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: trigger-build
+          image: registry.redhat.io/openshift4/ose-cli-rhel9:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          command:
+            - /bin/bash
+            - -c
+            - |
+              NAMESPACE="{{ include "parasol-insurance-secured-tenant.prefix" . }}-secured-build"
+
+              echo "Checking if a PipelineRun already exists..."
+              if oc get pipelinerun -n ${NAMESPACE} --no-headers 2>/dev/null | grep -q .; then
+                echo "PipelineRun already exists, skipping initial build."
+                exit 0
+              fi
+
+              echo "Creating initial PipelineRun..."
+              cat <<'PIPELINERUN' | oc create -f -
+              apiVersion: tekton.dev/v1
+              kind: PipelineRun
+              metadata:
+                generateName: parasol-insurance-secured-push-
+                namespace: {{ include "parasol-insurance-secured-tenant.prefix" . }}-secured-build
+              spec:
+                pipelineRef:
+                  name: parasol-insurance-secured-push
+                params:
+                  - name: git-revision
+                    value: main
+                workspaces:
+                  - name: source
+                    volumeClaimTemplate:
+                      spec:
+                        accessModes:
+                          - ReadWriteOnce
+                        resources:
+                          requests:
+                            storage: 2Gi
+                  - name: basic-auth
+                    secret:
+                      secretName: gitlab-basic-auth
+                  - name: dockerconfig
+                    secret:
+                      secretName: quay-push-secret
+                  - name: sonar-credentials
+                    secret:
+                      secretName: sonarqube-credentials
+                  - name: maven-cache
+                    persistentVolumeClaim:
+                      claimName: maven-cache
+              PIPELINERUN
+              echo "Initial PipelineRun created."

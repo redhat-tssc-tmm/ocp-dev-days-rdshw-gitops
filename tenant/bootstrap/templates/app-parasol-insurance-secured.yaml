@@ -1,0 +1,48 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ .Values.tenant.username }}-parasol-insurance-secured
+  namespace: {{ .Values.argocd.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  destination:
+    namespace: {{ .Values.argocd.namespace }}
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    path: tenant/parasol-insurance-secured-tenant
+    repoURL: {{ .Values.gitops.repoURL }}
+    # ┌─────────────────────────────────────────────────────────────┐
+    # │ DEVELOPMENT FORK — change back before publishing:          │
+    # │   module2 → main                                           │
+    # └─────────────────────────────────────────────────────────────┘
+    targetRevision: {{ .Values.gitops.targetRevision }}
+    helm:
+      valuesObject:
+        tenant:
+          username: {{ .Values.tenant.username }}
+        gitlab:
+          host: {{ .Values.gitlab.host }}
+        registry:
+          host: {{ .Values.registry.host }}
+        cluster:
+          subdomain: {{ .Values.cluster.subdomain }}
+        vault:
+          name: {{ .Values.vault.name }}
+          namespace: {{ .Values.vault.namespace }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 2m0s
+      limit: 30
+    syncOptions:
+      - CreateNamespace=true
+      - RespectIgnoreDifferences=true

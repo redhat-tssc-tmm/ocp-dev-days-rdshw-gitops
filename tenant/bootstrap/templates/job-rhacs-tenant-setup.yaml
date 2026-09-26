@@ -53,6 +53,9 @@ spec:
                         - {{ $username }}-prod
                         - {{ $username }}-parasol-payments
                         - {{ $username }}-parasol-web
+                        - {{ $username }}-secured-build
+                        - {{ $username }}-preprod
+                        - {{ $username }}-secured-prod
                 ---
                 name: {{ $roleName }}
                 description: Analyst role for {{ $username }}

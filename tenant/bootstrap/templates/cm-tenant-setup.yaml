@@ -353,3 +353,155 @@ data:
           ansible.builtin.file:
             path: /tmp/parasol-insurance-{{ "{{" }} tenant_username {{ "}}" }}
             state: absent
+
+        # ── Secured Parasol Insurance repos ──────────────────────────
+        - name: Create secured tenant projects in GitLab
+          ansible.builtin.uri:
+            url: https://{{ "{{" }} gitlab_host {{ "}}" }}/api/v4/projects
+            method: POST
+            body_format: json
+            body:
+              name: "{{ "{{" }} item {{ "}}" }}"
+              path: "{{ "{{" }} item {{ "}}" }}"
+              namespace_id: "{{ "{{" }} tenant_user_id {{ "}}" }}"
+              initialize_with_readme: false
+              visibility: public
+            headers:
+              PRIVATE-TOKEN: '{{ "{{" }} root_token {{ "}}" }}'
+            validate_certs: false
+            status_code:
+              - 201
+              - 400
+          loop:
+            - parasol-insurance-secured
+            - parasol-insurance-secured-manifests
+          register: r_create_secured_projects
+          retries: 5
+          delay: 5
+
+        - name: Import secured source repos into tenant projects
+          ansible.builtin.shell: |
+            set -e
+            rm -rf /tmp/{{ "{{" }} item {{ "}}" }}
+            git clone --bare https://{{ "{{" }} gitlab_host {{ "}}" }}/parasol/{{ "{{" }} item {{ "}}" }}.git /tmp/{{ "{{" }} item {{ "}}" }}
+            cd /tmp/{{ "{{" }} item {{ "}}" }}
+            git push --mirror https://{{ "{{" }} gitlab_host {{ "}}" }}/{{ "{{" }} tenant_username {{ "}}" }}/{{ "{{" }} item {{ "}}" }}.git
+            rm -rf /tmp/{{ "{{" }} item {{ "}}" }}
+          environment:
+            GIT_SSL_NO_VERIFY: "true"
+          loop:
+            - parasol-insurance-secured
+            - parasol-insurance-secured-manifests
+          register: r_import_secured_repos
+          retries: 5
+          delay: 5
+          until: r_import_secured_repos is not failed
+
+        - name: Ensure secured tenant repos are public and disable CI/CD
+          ansible.builtin.uri:
+            url: https://{{ "{{" }} gitlab_host {{ "}}" }}/api/v4/projects/{{ "{{" }} tenant_username {{ "}}" }}%2F{{ "{{" }} item {{ "}}" }}
+            method: PUT
+            body_format: json
+            body:
+              visibility: public
+              builds_access_level: disabled
+              auto_devops_enabled: false
+            headers:
+              PRIVATE-TOKEN: '{{ "{{" }} root_token {{ "}}" }}'
+            validate_certs: false
+            status_code: 200
+          loop:
+            - parasol-insurance-secured
+            - parasol-insurance-secured-manifests
+
+        - name: Clone tenant parasol-insurance-secured to template catalog-info
+          ansible.builtin.git:
+            repo: https://{{ "{{" }} gitlab_host {{ "}}" }}/{{ "{{" }} tenant_username {{ "}}" }}/parasol-insurance-secured.git
+            dest: /tmp/parasol-insurance-secured-{{ "{{" }} tenant_username {{ "}}" }}
+            version: main
+          environment:
+            GIT_SSL_NO_VERIFY: "true"
+          register: r_clone_secured_tenant
+          retries: 5
+          delay: 5
+          until: r_clone_secured_tenant is not failed
+
+        - name: Rename secured catalog-info template
+          ansible.builtin.command:
+            chdir: /tmp/parasol-insurance-secured-{{ "{{" }} tenant_username {{ "}}" }}
+            cmd: mv catalog-info.yaml.template catalog-info.yaml
+
+        - name: Replace template variables in secured catalog-info.yaml
+          ansible.builtin.replace:
+            path: /tmp/parasol-insurance-secured-{{ "{{" }} tenant_username {{ "}}" }}/catalog-info.yaml
+            regexp: '\{\{\s*{{ "{{" }} item.key {{ "}}" }}\s*\}\}'
+            replace: '{{ "{{" }} item.value {{ "}}" }}'
+          loop:
+            - key: user_guid
+              value: "{{ "{{" }} tenant_username {{ "}}" }}"
+            - key: cluster_subdomain
+              value: "{{ $.Values.cluster.subdomain }}"
+
+        - name: Unprotect main branch on secured repo before pushing
+          ansible.builtin.uri:
+            url: https://{{ "{{" }} gitlab_host {{ "}}" }}/api/v4/projects/{{ "{{" }} tenant_username {{ "}}" }}%2Fparasol-insurance-secured/protected_branches/main
+            method: DELETE
+            headers:
+              PRIVATE-TOKEN: '{{ "{{" }} root_token {{ "}}" }}'
+            validate_certs: false
+            status_code:
+              - 204
+              - 404
+
+        - name: Commit and push secured catalog-info.yaml
+          block:
+            - name: Commit and Push
+              ansible.builtin.shell: |
+                cd /tmp/parasol-insurance-secured-{{ "{{" }} tenant_username {{ "}}" }}
+                git add -A
+                git commit -m "chore: configure catalog-info for {{ "{{" }} tenant_username {{ "}}" }}"
+                git push origin main
+              environment:
+                GIT_SSL_NO_VERIFY: "true"
+
+          rescue:
+            - name: Remediation - Explicitly protect main branch
+              ansible.builtin.uri:
+                url: https://{{ "{{" }} gitlab_host {{ "}}" }}/api/v4/projects/{{ "{{" }} tenant_username {{ "}}" }}%2Fparasol-insurance-secured/protected_branches
+                method: POST
+                body_format: json
+                body:
+                  name: main
+                  push_access_level: 40
+                  merge_access_level: 40
+                  unprotect_access_level: 40
+                headers:
+                  PRIVATE-TOKEN: '{{ "{{" }} root_token {{ "}}" }}'
+                validate_certs: false
+                status_code:
+                  - 200
+                  - 201
+                  - 400
+
+            - name: Remediation — re-unprotect main branch on secured repo
+              ansible.builtin.uri:
+                url: https://{{ "{{" }} gitlab_host {{ "}}" }}/api/v4/projects/{{ "{{" }} tenant_username {{ "}}" }}%2Fparasol-insurance-secured/protected_branches/main
+                method: DELETE
+                headers:
+                  PRIVATE-TOKEN: '{{ "{{" }} root_token {{ "}}" }}'
+                validate_certs: false
+                status_code:
+                  - 204
+                  - 404
+
+            - name: Remediation — retry push after unprotecting secured branch
+              ansible.builtin.shell: |
+                cd /tmp/parasol-insurance-secured-{{ "{{" }} tenant_username {{ "}}" }}
+                git push origin main
+              environment:
+                GIT_SSL_NO_VERIFY: "true"
+
+        - name: Clean up cloned secured repo
+          ansible.builtin.file:
+            path: /tmp/parasol-insurance-secured-{{ "{{" }} tenant_username {{ "}}" }}
+            state: absent

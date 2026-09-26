@@ -1,0 +1,19 @@
+{{- $prefix := include "parasol-insurance-secured-tenant.prefix" . -}}
+{{- range $env := list "preprod" "secured-prod" }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $prefix }}-secured-build-rollout
+  namespace: {{ $prefix }}-{{ $env }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: edit
+subjects:
+  - kind: ServiceAccount
+    name: pipeline
+    namespace: {{ $prefix }}-secured-build
+{{- end }}

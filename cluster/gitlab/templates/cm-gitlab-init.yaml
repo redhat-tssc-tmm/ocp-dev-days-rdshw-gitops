@@ -217,6 +217,27 @@ data:
             - name: {{ $item1.name }}
               defaultBranch: {{ $item1.defaultBranch | default "main" }}
 {{- end }}
+
+        - name: Map source branch to main for imported repositories
+          ansible.builtin.shell: |
+            rm -rf /tmp/branch-map-{{ "{{" }} item.name {{ "}}" }}
+            git clone https://root:{{ $.Values.gitlab.rootPassword }}@{{ $.Values.gitlab.host }}/{{ $item.name }}/{{ "{{" }} item.name {{ "}}" }}.git /tmp/branch-map-{{ "{{" }} item.name {{ "}}" }}
+            cd /tmp/branch-map-{{ "{{" }} item.name {{ "}}" }}
+            git checkout {{ "{{" }} item.sourceBranch {{ "}}" }}
+            git push origin {{ "{{" }} item.sourceBranch {{ "}}" }}:main --force
+            rm -rf /tmp/branch-map-{{ "{{" }} item.name {{ "}}" }}
+          environment:
+            GIT_SSL_NO_VERIFY: "true"
+          when: item.sourceBranch != 'main'
+          retries: 10
+          delay: 10
+          register: r_source_branch_map
+          until: r_source_branch_map is not failed
+          loop:
+{{- range $item1 := $item.repo }}
+            - name: {{ $item1.name }}
+              sourceBranch: {{ $item1.sourceBranch | default "main" }}
+{{- end }}
 {{- end }}
 
 {{- if $item.project }}

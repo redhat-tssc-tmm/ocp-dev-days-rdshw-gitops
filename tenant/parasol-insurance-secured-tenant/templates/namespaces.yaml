@@ -1,0 +1,10 @@
+{{- $prefix := include "parasol-insurance-secured-tenant.prefix" . -}}
+{{- range $ns := list "secured-build" "preprod" "secured-prod" }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ $prefix }}-{{ $ns }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+{{- end }}

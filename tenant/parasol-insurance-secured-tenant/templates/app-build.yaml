@@ -1,0 +1,43 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ include "parasol-insurance-secured-tenant.prefix" . }}-secured-build
+  namespace: {{ .Values.argocd.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  # No finalizer — the parent app deletes the namespace which cleans up
+  # all resources. Using a finalizer here would block deletion because
+  # the PreDelete hook deletes the GitLab user (and source repo) before
+  # ArgoCD can reconcile the child app's desired state.
+spec:
+  destination:
+    namespace: {{ include "parasol-insurance-secured-tenant.prefix" . }}-secured-build
+    server: https://kubernetes.default.svc
+  project: {{ include "parasol-insurance-secured-tenant.argocd-project" . }}
+  source:
+    path: build
+    repoURL: https://{{ .Values.gitlab.host }}/{{ .Values.tenant.username }}/parasol-insurance-secured-manifests.git
+    targetRevision: main
+    helm:
+      valuesObject:
+        namespace: {{ include "parasol-insurance-secured-tenant.prefix" . }}-secured-build
+        preprodNamespace: {{ include "parasol-insurance-secured-tenant.prefix" . }}-preprod
+        tenant:
+          username: {{ .Values.tenant.username }}
+        gitlab:
+          host: {{ .Values.gitlab.host }}
+        registry:
+          host: {{ .Values.registry.host }}
+          organization: {{ .Values.tenant.username }}
+        cluster_subdomain: {{ .Values.cluster.subdomain }}
+        sonarqube:
+          host: "http://sonarqube.sonarqube.svc:9000"
+          dashboardUrl: "https://sonarqube-sonarqube.{{ .Values.cluster.subdomain }}"
+        rhacs:
+          host: "central-rhacs.apps.{{ .Values.cluster.subdomain }}"
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - RespectIgnoreDifferences=true

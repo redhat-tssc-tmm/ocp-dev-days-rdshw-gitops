@@ -31,11 +31,18 @@ server:
   persistence:
     size: 10Gi
 
+# ┌─────────────────────────────────────────────────────────────┐
+# │ DEVELOPMENT FORK — change back before publishing:          │
+# │   redhat-tssc-tmm → rhpds                                  │
+# │   module2 → main                                           │
+# └─────────────────────────────────────────────────────────────┘
 build:
   git:
     # Overridden by app-of-apps to match gitops.repoURL and targetRevision
-    uri: "https://github.com/rhpds/ocp-dev-days-rdshw-gitops.git"
-    ref: "main"
+    # uri: "https://github.com/rhpds/ocp-dev-days-rdshw-gitops.git"
+    uri: "https://github.com/redhat-tssc-tmm/ocp-dev-days-rdshw-gitops.git"
+    # ref: "main"
+    ref: "module2"
     contextDir: cluster/openvsx/open-vsx-server
 
 extensionUpload:

@@ -1,0 +1,44 @@
+{{- $prefix := include "parasol-insurance-secured-tenant.prefix" . -}}
+{{- $envMap := dict "preprod" "values-preprod" "secured-prod" "values-prod" -}}
+{{- range $env, $valuesFile := $envMap }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ $prefix }}-{{ $env }}
+  namespace: {{ $.Values.argocd.namespace }}
+  labels:
+    app.kubernetes.io/instance: {{ $prefix }}-parasol-insurance-secured
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  # No finalizer — see comment in app-build.yaml
+spec:
+  destination:
+    namespace: {{ $prefix }}-{{ $env }}
+    server: https://kubernetes.default.svc
+  project: {{ include "parasol-insurance-secured-tenant.argocd-project" $ }}
+  source:
+    path: app
+    repoURL: https://{{ $.Values.gitlab.host }}/{{ $.Values.tenant.username }}/parasol-insurance-secured-manifests.git
+    targetRevision: main
+    helm:
+      valueFiles:
+        - values/{{ $valuesFile }}.yaml
+      valuesObject:
+        namespace: {{ $prefix }}-{{ $env }}
+        tenant:
+          username: {{ $.Values.tenant.username }}
+        registry:
+          host: {{ $.Values.registry.host }}
+          organization: {{ $.Values.tenant.username }}
+        kafka:
+          topic: {{ $prefix }}-secured-intake
+        cluster:
+          subdomain: {{ $.Values.cluster.subdomain }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - RespectIgnoreDifferences=true
+{{- end }}

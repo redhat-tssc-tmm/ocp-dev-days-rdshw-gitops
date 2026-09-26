@@ -1,0 +1,14 @@
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: {{ include "parasol-insurance-secured-tenant.prefix" . }}-secured-intake
+  namespace: {{ .Values.kafka.namespace }}
+  labels:
+    strimzi.io/cluster: {{ .Values.kafka.clusterName }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  partitions: 1
+  replicas: 1
+  config:
+    retention.ms: 604800000

@@ -1,0 +1,39 @@
+tenant:
+  username: ""
+
+gitlab:
+  host: ""
+
+registry:
+  host: ""
+
+cluster:
+  subdomain: ""
+
+argocd:
+  namespace: openshift-gitops
+
+vault:
+  name: vault
+  namespace: vault
+
+kafka:
+  namespace: kafka
+  clusterName: kafka
+
+resourceQuota:
+  limits:
+    cpu: "4"
+    memory: 8Gi
+  requests:
+    cpu: "4"
+    memory: 8Gi
+    storage: 50Gi
+
+limitRange:
+  default:
+    cpu: "1"
+    memory: 2Gi
+  defaultRequest:
+    cpu: 250m
+    memory: 256Mi

@@ -40,17 +40,43 @@ gitlab:
         - id: dev1
         - id: dev2
     - name: parasol
+      # ┌─────────────────────────────────────────────────────────────┐
+      # │ DEVELOPMENT FORK — change back before publishing:          │
+      # │   redhat-tssc-tmm → openshift-dev-days                     │
+      # │   remove sourceBranch lines (content will be on main)      │
+      # └─────────────────────────────────────────────────────────────┘
       repo:
         - name: parasol-insurance
-          url: https://github.com/openshift-dev-days/parasol-insurance.git
+          # url: https://github.com/openshift-dev-days/parasol-insurance.git
+          url: https://github.com/redhat-tssc-tmm/parasol-insurance.git
+          sourceBranch: module2
         - name: parasol-insurance-manifests
-          url: https://github.com/openshift-dev-days/parasol-insurance-manifests.git
+          # url: https://github.com/openshift-dev-days/parasol-insurance-manifests.git
+          url: https://github.com/redhat-tssc-tmm/parasol-insurance-manifests.git
+          sourceBranch: module2
         - name: devfiles
-          url: https://github.com/openshift-dev-days/devfiles.git
+          # url: https://github.com/openshift-dev-days/devfiles.git
+          url: https://github.com/redhat-tssc-tmm/devfiles.git
+          sourceBranch: module2
         - name: parasol-catalog-entities
-          url: https://github.com/openshift-dev-days/parasol-catalog-entities.git
+          # url: https://github.com/openshift-dev-days/parasol-catalog-entities.git
+          url: https://github.com/redhat-tssc-tmm/parasol-catalog-entities.git
+          sourceBranch: module2
         - name: rhdh-templates
-          url: https://github.com/openshift-dev-days/rhdh-templates.git
+          # url: https://github.com/openshift-dev-days/rhdh-templates.git
+          url: https://github.com/redhat-tssc-tmm/rhdh-templates.git
+          sourceBranch: module2
+        - name: parasol-insurance-secured
+          url: https://github.com/redhat-tssc-tmm/parasol-insurance-secured.git
+          sourceBranch: module2
+          properties:
+            onlyMergeWhenPipelineSucceeds: true
+        - name: parasol-insurance-secured-manifests
+          url: https://github.com/redhat-tssc-tmm/parasol-insurance-secured-manifests.git
+          sourceBranch: module2
+        - name: conforma-policies
+          url: https://github.com/redhat-tssc-tmm/conforma-policies.git
+          sourceBranch: module2
       users:
         - id: dev1
         - id: dev2
@@ -63,10 +89,16 @@ gitlab:
       templates:
         - devfile.yaml
     - group: parasol
+      project: parasol-insurance-secured
+      branch: main
+      templates:
+        - catalog-info.yaml
+    - group: parasol
       project: rhdh-templates
       branch: main
       templates:
         - templates/parasol-dev-environment/template.yaml
+        - templates/secured-parasol-dev-environment/template.yaml
 postgresql:
   dbUser: gitlab
   dbPassword: passw0rd

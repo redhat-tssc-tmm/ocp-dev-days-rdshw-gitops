@@ -1,6 +1,13 @@
+# ┌─────────────────────────────────────────────────────────────┐
+# │ DEVELOPMENT FORK — change back before publishing:          │
+# │   redhat-tssc-tmm → rhpds                                  │
+# │   module2 → main                                           │
+# └─────────────────────────────────────────────────────────────┘
 gitops:
-  repoURL: https://github.com/rhpds/ocp-dev-days-rdshw-gitops.git
-  targetRevision: main
+  # repoURL: https://github.com/rhpds/ocp-dev-days-rdshw-gitops.git
+  repoURL: https://github.com/redhat-tssc-tmm/ocp-dev-days-rdshw-gitops.git
+  # targetRevision: main
+  targetRevision: module2
 
 argocd:
   namespace: openshift-gitops
@@ -130,6 +137,10 @@ rhtas:
   rootCert:
     email: admin@rhdemo.com
     org: Parasol
+
+policyController:
+  name: policy-controller
+  namespace: policy-controller-operator
 
 tpa:
   enabled: true

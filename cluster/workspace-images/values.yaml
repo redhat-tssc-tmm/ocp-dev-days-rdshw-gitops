@@ -2,10 +2,17 @@
 nameOverride: ""
 namespace: "workspace-images"
 
+# ┌─────────────────────────────────────────────────────────────┐
+# │ DEVELOPMENT FORK — change back before publishing:          │
+# │   redhat-tssc-tmm → openshift-dev-days                     │
+# │   module2 → main                                           │
+# └─────────────────────────────────────────────────────────────┘
 # Git repository configuration
 git:
-  uri: "https://github.com/openshift-dev-days/workspace-images.git"
-  ref: "main"
+  # uri: "https://github.com/openshift-dev-days/workspace-images.git"
+  uri: "https://github.com/redhat-tssc-tmm/workspace-images.git"
+  # ref: "main"
+  ref: "module2"
   contextDir: "cekit-builder-image"
 
 # Image registry configuration
