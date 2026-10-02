@@ -23,11 +23,11 @@ kafka:
 
 resourceQuota:
   limits:
-    cpu: "4"
-    memory: 8Gi
+    cpu: "12"
+    memory: 16Gi
   requests:
-    cpu: "4"
-    memory: 8Gi
+    cpu: "12"
+    memory: 16Gi
     storage: 50Gi
 
 limitRange:
