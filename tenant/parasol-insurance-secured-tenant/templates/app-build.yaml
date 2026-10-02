@@ -38,8 +38,8 @@ spec:
   ignoreDifferences:
     - group: tekton.dev
       kind: Task
-      jsonPointers:
-        - /spec/steps
+      managedFieldsManagers:
+        - tekton-pipelines-controller
   syncPolicy:
     automated:
       prune: true
