@@ -35,11 +35,6 @@ spec:
           dashboardUrl: "https://sonarqube-sonarqube.{{ .Values.cluster.subdomain }}"
         rhacs:
           host: "central-rhacs.apps.{{ .Values.cluster.subdomain }}"
-  ignoreDifferences:
-    - group: tekton.dev
-      kind: Task
-      managedFieldsManagers:
-        - tekton-pipelines-controller
   syncPolicy:
     automated:
       prune: true
