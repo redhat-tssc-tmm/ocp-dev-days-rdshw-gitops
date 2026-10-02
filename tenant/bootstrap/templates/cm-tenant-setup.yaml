@@ -414,6 +414,18 @@ data:
             - parasol-insurance-secured
             - parasol-insurance-secured-manifests
 
+        - name: Enable merge-when-pipeline-succeeds on secured source repo
+          ansible.builtin.uri:
+            url: https://{{ "{{" }} gitlab_host {{ "}}" }}/api/v4/projects/{{ "{{" }} tenant_username {{ "}}" }}%2Fparasol-insurance-secured
+            method: PUT
+            body_format: json
+            body:
+              only_allow_merge_if_pipeline_succeeds: true
+            headers:
+              PRIVATE-TOKEN: '{{ "{{" }} root_token {{ "}}" }}'
+            validate_certs: false
+            status_code: 200
+
         - name: Clone tenant parasol-insurance-secured to template catalog-info
           ansible.builtin.git:
             repo: https://{{ "{{" }} gitlab_host {{ "}}" }}/{{ "{{" }} tenant_username {{ "}}" }}/parasol-insurance-secured.git
