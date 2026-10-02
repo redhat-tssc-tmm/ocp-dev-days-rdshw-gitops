@@ -92,7 +92,7 @@ gitlab:
       project: parasol-insurance-secured
       branch: main
       templates:
-        - catalog-info.yaml
+        - devfile.yaml
     - group: parasol
       project: rhdh-templates
       branch: main
