@@ -19,6 +19,10 @@ spec:
           Issuer: 'https://{{ .Values.oidc.issuer }}'
           IssuerURL: 'https://{{ .Values.oidc.issuer }}'
           Type: email
+        - ClientID: {{ .Values.oidc.clientId }}
+          Issuer: https://kubernetes.default.svc
+          IssuerURL: https://kubernetes.default.svc
+          Type: kubernetes
     ctlog:
       port: 80
       prefix: trusted-artifact-signer
