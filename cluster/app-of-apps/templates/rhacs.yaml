@@ -28,6 +28,8 @@ spec:
             source: {{ include "app-of-apps.operatorSource" . }}
         rhacs-central:
           namespace: {{ .Values.rhacs.namespace }}
+          cluster:
+            subdomain: {{ .Values.cluster.subdomain }}
         rhacs-secured-cluster:
           namespace: {{ .Values.rhacs.namespace }}
           clusterName: {{ .Values.rhacs.clusterName }}

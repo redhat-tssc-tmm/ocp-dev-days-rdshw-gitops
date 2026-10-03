@@ -1,0 +1,81 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rhacs-quay-integration
+  namespace: {{ include "rhacs-central.namespace" . }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 30
+  template:
+    spec:
+      serviceAccountName: rhacs-setup
+      restartPolicy: OnFailure
+      containers:
+        - name: quay-integration
+          image: registry.redhat.io/openshift4/ose-cli-rhel9:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+
+              NAMESPACE="{{ include "rhacs-central.namespace" . }}"
+              {{- if .Values.cluster }}
+              QUAY_HOST="quay.{{ .Values.cluster.subdomain }}"
+              {{- else }}
+              echo "cluster.subdomain not set, skipping Quay integration"
+              exit 0
+              {{- end }}
+              INTEGRATION_NAME="Cluster Quay Registry"
+
+              CENTRAL_URL="https://central.${NAMESPACE}.svc"
+              RHACS_PASSWORD=$(oc get secret central-htpasswd -n "${NAMESPACE}" -o jsonpath='{.data.password}' | base64 -d)
+
+              echo "Waiting for Central API..."
+              until curl -sk -u "admin:${RHACS_PASSWORD}" "${CENTRAL_URL}/v1/metadata" | grep -q '"version"'; do
+                sleep 10
+              done
+
+              EXISTING=$(curl -sk -u "admin:${RHACS_PASSWORD}" "${CENTRAL_URL}/v1/imageintegrations" | \
+                python3 -c "
+              import json, sys
+              data = json.load(sys.stdin)
+              for i in data.get('integrations', []):
+                  if i.get('name') == '${INTEGRATION_NAME}':
+                      print(i['id'])
+                      break
+              ")
+
+              if [[ -n "${EXISTING}" ]]; then
+                echo "Quay integration '${INTEGRATION_NAME}' already exists (ID: ${EXISTING})."
+                exit 0
+              fi
+
+              echo "Creating Quay image integration for ${QUAY_HOST}..."
+              RESULT=$(curl -sk -u "admin:${RHACS_PASSWORD}" "${CENTRAL_URL}/v1/imageintegrations" \
+                -X POST -H "Content-Type: application/json" \
+                -d "{
+                  \"name\": \"${INTEGRATION_NAME}\",
+                  \"type\": \"docker\",
+                  \"categories\": [\"REGISTRY\"],
+                  \"docker\": {
+                    \"endpoint\": \"${QUAY_HOST}\",
+                    \"username\": \"\",
+                    \"password\": \"\",
+                    \"insecure\": true
+                  },
+                  \"skipTestIntegration\": true
+                }")
+
+              echo "${RESULT}" | python3 -c "
+              import json, sys
+              d = json.load(sys.stdin)
+              if d.get('name'):
+                  print(f'Integration created: {d[\"name\"]}')
+              else:
+                  print(f'Error: {d.get(\"message\", d)}')
+                  sys.exit(1)
+              "
