@@ -12,7 +12,6 @@ metadata:
 type: Opaque
 stringData:
   rhtpa.client.id: {{ .Values.tpa.oidc.clientId | quote }}
-  rhtpa.client.secret: {{ .Values.tpa.oidc.clientSecret | quote }}
   rhtpa.auth.server.url: "https://{{ .Values.keycloak.host }}/realms/{{ .Values.keycloak.realm }}"
 ---
 apiVersion: v1
@@ -158,8 +157,8 @@ spec:
             - name: PROVIDER_RHTPA_AUTH_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: rhda-backend-secret
-                  key: rhtpa.client.secret
+                  name: oidc-cli
+                  key: client-secret
             - name: PROVIDER_RHTPA_AUTH_SERVER_URL
               valueFrom:
                 secretKeyRef:
