@@ -1,5 +1,0 @@
-apiVersion: v2
-name: tpa-server
-description: TPA server - renders ArgoCD Application for upstream Helm chart
-type: application
-version: 0.1.0

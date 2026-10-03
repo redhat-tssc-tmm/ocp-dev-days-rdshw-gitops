@@ -1,0 +1,11 @@
+keycloak:
+  host: ""
+  namespace: keycloak
+  realm: sso
+
+tpa:
+  oidc:
+    clientId: tpa-cli
+    frontendClientId: tpa-frontend
+    clientSecret: ""
+  adminEmail: admin@demo.redhat.com

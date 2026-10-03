@@ -1,0 +1,88 @@
+tenant:
+  username: ""
+
+cluster:
+  subdomain: ""
+
+argocd:
+  namespace: openshift-gitops
+
+vault:
+  name: vault
+  namespace: vault
+
+keycloak:
+  host: ""
+  realm: sso
+
+tpa:
+  chartVersion: "*"
+  oidc:
+    clientId: tpa-cli
+    clientSecret: ""
+    frontendClientId: tpa-frontend
+  server:
+    image: {}
+  objectBucketClaim:
+    name: tpa-bucket-claim
+    bucketName: tpa-bucket
+    storageClassName: openshift-storage.noobaa.io
+  postgresql:
+    credentials:
+      dbHost: "tpa-postgresql"
+      dbName: "tpadb"
+      dbUser: "tpauser"
+      dbPassword: "r3dh8t1!"
+      dbAdmin: "postgres"
+      dbAdminPassword: "adminr3dh8t1!"
+      dbPort: "5432"
+    storage:
+      size: 5Gi
+    tuning:
+      maxWalSize: "1GB"
+      minWalSize: "128MB"
+      walBuffers: "16MB"
+      maintenanceWorkMem: "64MB"
+      workMem: "2MB"
+      sharedBuffers: "128MB"
+      effectiveCacheSize: "512MB"
+      maxConnections: 100
+  dataset:
+    url: "https://raw.githubusercontent.com/redhat-tssc-tmm/rhdp-tpa-demo/main/datasets/tpa-demo-dataset-v2.zip"
+  images:
+    postgresql: registry.redhat.io/rhel10/postgresql-18
+    dbMonitor: quay.io/tssc_demos/tpa-db-monitor:latest
+    rhdaBackend: quay.io/tssc_demos/trustify-dependency-analytics:v3.1.0
+    rhdaInitImage: registry.redhat.io/ubi9/openjdk-21-runtime:1.23
+    dataset: registry.redhat.io/ubi9/ubi
+    redis: registry.redhat.io/rhel9/redis-7:latest
+
+rhda:
+  postgresql:
+    storage: 1Gi
+    database: trustify_da
+    username: trustify_da
+    password: "r3dh8t1!"
+  redis:
+    storage: 1Gi
+  branding:
+    displayName: "Red Hat Trusted Profile Analyzer"
+    exploreTitle: "Open your Red Hat Trusted Profile Analyzer"
+    exploreDescription: "Red Hat Trusted Profile Analyzer helps organizations manage SBOMs, vulnerability advisories, and VEX data."
+
+resourceQuota:
+  limits:
+    cpu: "8"
+    memory: 16Gi
+  requests:
+    cpu: "8"
+    memory: 16Gi
+    storage: 50Gi
+
+limitRange:
+  default:
+    cpu: "1"
+    memory: 2Gi
+  defaultRequest:
+    cpu: 250m
+    memory: 256Mi

@@ -10,4 +10,16 @@ spec:
     path: cluster/tenant-prereqs
     repoURL: {{ .Values.gitops.repoURL }}
     targetRevision: {{ .Values.gitops.targetRevision }}
+    helm:
+      valuesObject:
+        keycloak:
+          host: sso.{{ .Values.cluster.subdomain }}
+          namespace: keycloak
+          realm: sso
+        tpa:
+          oidc:
+            clientId: tpa-cli
+            frontendClientId: tpa-frontend
+            clientSecret: {{ .Values.vault.secrets.tpa.clientSecret | quote }}
+          adminEmail: admin@demo.redhat.com
   {{ include "app-of-apps.syncPolicy" . | nindent 2 }}

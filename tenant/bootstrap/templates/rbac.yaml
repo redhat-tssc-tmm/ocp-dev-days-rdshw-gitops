@@ -6,6 +6,8 @@
   (printf "%s-secured-build" $username)
   (printf "%s-preprod" $username)
   (printf "%s-secured-prod" $username)
+  (printf "%s-tpa" $username)
+  (printf "%s-rhda" $username)
 }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1

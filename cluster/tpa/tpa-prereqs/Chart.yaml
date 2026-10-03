@@ -1,5 +1,0 @@
-apiVersion: v2
-name: tpa-prereqs
-description: TPA prerequisites - S3 storage, OIDC secret, Keycloak setup
-type: application
-version: 0.1.0
