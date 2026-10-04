@@ -454,6 +454,17 @@ data:
             - key: cluster_subdomain
               value: "{{ $.Values.cluster.subdomain }}"
 
+        - name: Replace template variables in secured vscode.code-workspace
+          ansible.builtin.replace:
+            path: /tmp/parasol-insurance-secured-{{ "{{" }} tenant_username {{ "}}" }}/vscode.code-workspace
+            regexp: '\{\{\s*{{ "{{" }} item.key {{ "}}" }}\s*\}\}'
+            replace: '{{ "{{" }} item.value {{ "}}" }}'
+          loop:
+            - key: user_guid
+              value: "{{ "{{" }} tenant_username {{ "}}" }}"
+            - key: cluster_subdomain
+              value: "{{ $.Values.cluster.subdomain }}"
+
         - name: Unprotect main branch on secured repo before pushing
           ansible.builtin.uri:
             url: https://{{ "{{" }} gitlab_host {{ "}}" }}/api/v4/projects/{{ "{{" }} tenant_username {{ "}}" }}%2Fparasol-insurance-secured/protected_branches/main
