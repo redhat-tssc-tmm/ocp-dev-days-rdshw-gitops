@@ -1,0 +1,15 @@
+{{- if .Values.rhacs.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+{{ include "app-of-apps.metadata" (dict "name" "acs-policies" "namespace" .Values.argocd.namespace "syncWave" "2") }}
+spec:
+  destination:
+    namespace: {{ .Values.rhacs.namespace }}
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    path: policies
+    repoURL: https://{{ .Values.gitlab.host }}/parasol/acs-policies.git
+    targetRevision: main
+  {{ include "app-of-apps.syncPolicy" . | nindent 2 }}
+{{- end }}
