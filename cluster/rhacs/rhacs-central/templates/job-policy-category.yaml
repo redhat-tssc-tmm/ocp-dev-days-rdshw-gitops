@@ -1,0 +1,64 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rhacs-policy-category
+  namespace: {{ include "rhacs-central.namespace" . }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 30
+  template:
+    spec:
+      serviceAccountName: rhacs-setup
+      restartPolicy: OnFailure
+      containers:
+        - name: policy-category
+          image: registry.redhat.io/openshift4/ose-cli-rhel9:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+
+              NAMESPACE="{{ include "rhacs-central.namespace" . }}"
+              CATEGORY_NAME="Parasol Secured Build Gate"
+
+              CENTRAL_URL="https://central.${NAMESPACE}.svc"
+              RHACS_PASSWORD=$(oc get secret central-htpasswd -n "${NAMESPACE}" -o jsonpath='{.data.password}' | base64 -d)
+
+              echo "Waiting for Central API..."
+              until curl -sk -u "admin:${RHACS_PASSWORD}" "${CENTRAL_URL}/v1/metadata" | grep -q '"version"'; do
+                sleep 10
+              done
+
+              EXISTING=$(curl -sk -u "admin:${RHACS_PASSWORD}" "${CENTRAL_URL}/v1/policycategories" | \
+                python3 -c "
+              import json, sys
+              data = json.load(sys.stdin)
+              for c in data.get('categories', []):
+                  if c.get('name') == '${CATEGORY_NAME}':
+                      print(c['id'])
+                      break
+              ")
+
+              if [[ -n "${EXISTING}" ]]; then
+                echo "Policy category '${CATEGORY_NAME}' already exists (ID: ${EXISTING})."
+                exit 0
+              fi
+
+              echo "Creating policy category '${CATEGORY_NAME}'..."
+              RESULT=$(curl -sk -u "admin:${RHACS_PASSWORD}" "${CENTRAL_URL}/v1/policycategories" \
+                -X POST -H "Content-Type: application/json" \
+                -d "{\"name\": \"${CATEGORY_NAME}\"}")
+
+              echo "${RESULT}" | python3 -c "
+              import json, sys
+              d = json.load(sys.stdin)
+              if d.get('name'):
+                  print(f'Category created: {d[\"name\"]} (ID: {d.get(\"id\",\"?\")})')
+              else:
+                  print(f'Error: {d.get(\"message\", d)}')
+                  sys.exit(1)
+              "

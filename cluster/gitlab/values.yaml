@@ -77,6 +77,10 @@ gitlab:
         - name: conforma-policies
           url: https://github.com/redhat-tssc-tmm/conforma-policies.git
           sourceBranch: module2
+        - name: acs-policies
+          # url: https://github.com/openshift-dev-days/acs-policies.git
+          url: https://github.com/redhat-tssc-tmm/acs-policies.git
+          sourceBranch: module2
       users:
         - id: dev1
         - id: dev2
