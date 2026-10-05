@@ -1,0 +1,33 @@
+namespace: trusted-profile-analyzer
+
+credentials:
+  dbHost: "tpa-postgresql"
+  dbName: "tpadb"
+  dbUser: "tpauser"
+  dbPassword: "r3dh8t1!"
+  dbAdmin: "postgres"
+  dbAdminPassword: "adminr3dh8t1!"
+  dbPort: "5432"
+
+storage:
+  size: 30Gi
+
+image: registry.redhat.io/rhel10/postgresql-18
+
+tuning:
+  maxWalSize: "4GB"
+  minWalSize: "512MB"
+  walBuffers: "64MB"
+  maintenanceWorkMem: "256MB"
+  workMem: "2MB"
+  sharedBuffers: "512MB"
+  effectiveCacheSize: "2GB"
+  maxConnections: 200
+
+resources:
+  limits:
+    memory: 6Gi
+    cpu: 2
+  requests:
+    memory: 2Gi
+    cpu: 500m

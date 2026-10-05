@@ -1,0 +1,39 @@
+namespace: rhda-backend
+
+image: quay.io/tssc_demos/trustify-dependency-analytics:v3.1.0
+initImage: registry.redhat.io/ubi9/openjdk-21-runtime:1.23
+
+resources:
+  limits:
+    memory: 2Gi
+    cpu: "1"
+  requests:
+    memory: 1Gi
+    cpu: 250m
+
+tpaNamespace: trusted-profile-analyzer
+subdomain: ""
+
+oidc:
+  clientId: tpa-cli
+  clientSecret: ""
+  keycloakHost: ""
+  realm: sso
+
+branding:
+  displayName: "Red Hat Trusted Profile Analyzer"
+  exploreTitle: "Open your Red Hat Trusted Profile Analyzer"
+  exploreDescription: "Red Hat Trusted Profile Analyzer helps organizations manage SBOMs, vulnerability advisories, and VEX data."
+
+postgresql:
+  image: registry.redhat.io/rhel10/postgresql-18
+  storage: 1Gi
+  database: trustify_da
+  username: trustify_da
+  password: "r3dh8t1!"
+
+redis:
+  image: registry.redhat.io/rhel9/redis-7:latest
+  storage: 1Gi
+
+routeHost: ""

@@ -1,0 +1,24 @@
+namespace: trusted-profile-analyzer
+
+objectBucketClaim:
+  name: tpa-bucket-claim
+  bucketName: tpa-bucket
+  storageClassName: openshift-storage.noobaa.io
+
+keycloak:
+  namespace: keycloak
+  host: ""
+  realm: sso
+
+oidc:
+  clientId: tpa-cli
+  clientSecret: ""
+  frontendClientId: tpa-frontend
+
+tpaRouteHost: ""
+
+adminEmail: admin@demo.redhat.com
+
+syncwave:
+  prereqs: "-1"
+  keycloakJob: "0"

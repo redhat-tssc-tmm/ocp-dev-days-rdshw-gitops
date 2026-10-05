@@ -1,0 +1,5 @@
+apiVersion: v2
+name: tpa-db-monitor
+description: Database monitor dashboard for Trusted Profile Analyzer
+type: application
+version: 0.1.0

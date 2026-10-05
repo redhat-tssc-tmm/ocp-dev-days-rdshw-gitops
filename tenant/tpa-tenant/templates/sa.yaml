@@ -1,6 +1,0 @@
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: {{ include "tpa-tenant.prefix" . }}-tpa
-  annotations:
-    argocd.argoproj.io/sync-wave: "0"

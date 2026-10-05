@@ -1,0 +1,62 @@
+{{- if .Values.tpa.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+{{ include "app-of-apps.metadata" (dict "name" .Values.tpa.name "namespace" .Values.argocd.namespace "syncWave" "1") }}
+spec:
+  destination:
+    namespace: {{ .Values.tpa.namespace }}
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    path: cluster/tpa
+    repoURL: {{ .Values.gitops.repoURL }}
+    targetRevision: {{ .Values.gitops.targetRevision }}
+    helm:
+      valuesObject:
+        tpa-prereqs:
+          namespace: {{ .Values.tpa.namespace }}
+          tpaRouteHost: tpa.{{ .Values.cluster.subdomain }}
+          keycloak:
+            host: sso.{{ .Values.cluster.subdomain }}
+            realm: sso
+          oidc:
+            clientId: tpa-cli
+            clientSecret: {{ .Values.vault.secrets.tpa.clientSecret }}
+            frontendClientId: tpa-frontend
+        tpa-postgresql:
+          namespace: {{ .Values.tpa.namespace }}
+          image: {{ .Values.tpa.images.postgresql }}
+        tpa-server:
+          namespace: {{ .Values.tpa.namespace }}
+          chartVersion: {{ .Values.tpa.chartVersion | quote }}
+          subdomain: {{ .Values.cluster.subdomain }}
+          keycloak:
+            host: sso.{{ .Values.cluster.subdomain }}
+            realm: sso
+          argocd:
+            namespace: {{ .Values.argocd.namespace }}
+        tpa-dataset:
+          namespace: {{ .Values.tpa.namespace }}
+          subdomain: {{ .Values.cluster.subdomain }}
+          image: {{ .Values.tpa.images.dataset }}
+          keycloak:
+            host: sso.{{ .Values.cluster.subdomain }}
+            realm: sso
+        tpa-db-monitor:
+          namespace: {{ .Values.tpa.namespace }}
+          image: {{ .Values.tpa.images.dbMonitor }}
+          routeHost: tpa-db-monitor.{{ .Values.cluster.subdomain }}
+        tpa-rhda-backend:
+          namespace: {{ .Values.tpa.rhdaNamespace }}
+          tpaNamespace: {{ .Values.tpa.namespace }}
+          subdomain: {{ .Values.cluster.subdomain }}
+          image: {{ .Values.tpa.images.rhdaBackend }}
+          initImage: {{ .Values.tpa.images.rhdaInitImage }}
+          oidc:
+            clientId: tpa-cli
+            clientSecret: {{ .Values.vault.secrets.tpa.clientSecret }}
+            keycloakHost: sso.{{ .Values.cluster.subdomain }}
+            realm: sso
+          routeHost: rhda.{{ .Values.cluster.subdomain }}
+{{ include "app-of-apps.syncPolicy" . | indent 2 }}
+{{- end }}

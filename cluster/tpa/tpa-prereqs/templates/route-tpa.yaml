@@ -1,0 +1,21 @@
+{{- if .Values.tpaRouteHost }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: tpa-short-url
+  namespace: {{ include "tpa-prereqs.namespace" . }}
+  labels:
+    app: tpa
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ .Values.syncwave.prereqs | quote }}
+spec:
+  host: {{ .Values.tpaRouteHost }}
+  to:
+    kind: Service
+    name: server
+  port:
+    targetPort: endpoint
+  tls:
+    termination: reencrypt
+    insecureEdgeTerminationPolicy: Redirect
+{{- end }}

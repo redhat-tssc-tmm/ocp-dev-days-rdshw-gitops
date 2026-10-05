@@ -1,0 +1,21 @@
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: tpa-db-monitor
+  labels:
+    app: tpa-db-monitor
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  {{- if .Values.routeHost }}
+  host: {{ .Values.routeHost }}
+  {{- end }}
+  to:
+    kind: Service
+    name: tpa-db-monitor
+  port:
+    targetPort: 8080
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

@@ -138,6 +138,19 @@ rhtas:
     email: admin@rhdemo.com
     org: Parasol
 
+tpa:
+  enabled: true
+  name: tpa
+  namespace: trusted-profile-analyzer
+  rhdaNamespace: rhda-backend
+  chartVersion: "*"
+  images:
+    dbMonitor: quay.io/tssc_demos/tpa-db-monitor:latest
+    rhdaBackend: quay.io/tssc_demos/trustify-dependency-analytics:v3.1.0
+    rhdaInitImage: registry.redhat.io/ubi9/openjdk-21-runtime:1.23
+    postgresql: registry.redhat.io/rhel10/postgresql-18
+    dataset: registry.redhat.io/ubi9/ubi
+
 policyController:
   name: policy-controller
   namespace: policy-controller-operator

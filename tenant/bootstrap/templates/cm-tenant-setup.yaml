@@ -460,8 +460,6 @@ data:
             regexp: '\{\{\s*{{ "{{" }} item.key {{ "}}" }}\s*\}\}'
             replace: '{{ "{{" }} item.value {{ "}}" }}'
           loop:
-            - key: user_guid
-              value: "{{ "{{" }} tenant_username {{ "}}" }}"
             - key: cluster_subdomain
               value: "{{ $.Values.cluster.subdomain }}"
 

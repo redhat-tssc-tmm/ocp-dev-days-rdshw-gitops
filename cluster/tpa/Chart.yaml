@@ -1,0 +1,25 @@
+apiVersion: v2
+name: tpa
+description: Trusted Profile Analyzer with RHDA backend
+type: application
+version: 0.1.0
+
+dependencies:
+  - name: tpa-prereqs
+    version: 0.1.0
+    repository: file://tpa-prereqs
+  - name: tpa-postgresql
+    version: 0.1.0
+    repository: file://tpa-postgresql
+  - name: tpa-server
+    version: 0.1.0
+    repository: file://tpa-server
+  - name: tpa-dataset
+    version: 0.1.0
+    repository: file://tpa-dataset
+  - name: tpa-db-monitor
+    version: 0.1.0
+    repository: file://tpa-db-monitor
+  - name: tpa-rhda-backend
+    version: 0.1.0
+    repository: file://tpa-rhda-backend
