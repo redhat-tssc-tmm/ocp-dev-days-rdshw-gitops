@@ -10,7 +10,7 @@ metadata:
 spec:
   fulcio:
     certificate:
-      commonName: fulcio.hostname
+      commonName: CISO-office
       organizationEmail: {{ .Values.rootCert.email }}
       organizationName: {{ .Values.rootCert.org }}
     config:
