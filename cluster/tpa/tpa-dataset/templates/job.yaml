@@ -21,7 +21,7 @@ spec:
             - name: DATASET_URL
               value: {{ .Values.datasetUrl | quote }}
             - name: TPA_URL
-              value: "https://tpa.{{ .Values.subdomain }}"
+              value: "https://server.trusted-profile-analyzer.svc"
             - name: KC_TOKEN_URL
               value: "https://{{ .Values.keycloak.host }}/realms/{{ .Values.keycloak.realm }}/protocol/openid-connect/token"
             - name: CLIENT_ID
