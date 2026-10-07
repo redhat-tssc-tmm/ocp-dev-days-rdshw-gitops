@@ -18,8 +18,6 @@ spec:
         - name: upload
           image: {{ .Values.image }}
           env:
-            - name: DATASET_URL
-              value: {{ .Values.datasetUrl | quote }}
             - name: TPA_URL
               value: "https://server.trusted-profile-analyzer.svc"
             - name: KC_TOKEN_URL
@@ -31,6 +29,8 @@ spec:
                 secretKeyRef:
                   name: oidc-cli
                   key: client-secret
+            - name: DATASETS
+              value: {{ .Values.datasets | toJson | quote }}
           command:
             - /bin/bash
             - -c
@@ -48,11 +48,6 @@ spec:
                 sleep 10
               done
 
-              echo "Downloading dataset..."
-              curl -sSL -o /tmp/dataset.zip "$DATASET_URL"
-              FILE_SIZE=$(du -h /tmp/dataset.zip | cut -f1)
-              echo "Downloaded ${FILE_SIZE}"
-
               echo "Requesting access token..."
               TOKEN=""
               for i in $(seq 1 12); do
@@ -64,7 +59,6 @@ spec:
                   break
                 fi
                 echo "  Attempt ${i}/12: token request failed, waiting 10s..."
-                echo "  Response: ${RESPONSE:0:200}"
                 sleep 10
               done
 
@@ -73,32 +67,53 @@ spec:
                 exit 1
               fi
 
-              echo "Uploading dataset to ${TPA_URL}/api/v3/dataset ..."
-              HTTP_CODE=$(curl -sk -o /tmp/response.json -w "%{http_code}" -X POST \
-                "${TPA_URL}/api/v3/dataset" \
-                -H "Content-Type: application/zip" \
-                -H "Authorization: Bearer ${TOKEN}" \
-                --data-binary @/tmp/dataset.zip) || true
+              FAILED=0
+              echo "$DATASETS" | python3 -c '
+              import json, sys
+              for d in json.load(sys.stdin):
+                  if d.get("url") and d.get("label"):
+                      print(f"{d[\"label\"]}|{d[\"url\"]}")
+              ' | while IFS='|' read -r LABEL URL; do
+                echo ""
+                echo "============================================"
+                echo "Dataset: ${LABEL}"
+                echo "URL: ${URL}"
+                echo "============================================"
 
-              echo "HTTP response code: ${HTTP_CODE:-unknown}"
+                echo "Downloading ${LABEL}..."
+                curl -sSL -o /tmp/dataset.zip "$URL"
+                FILE_SIZE=$(du -h /tmp/dataset.zip | cut -f1)
+                echo "Downloaded ${FILE_SIZE}"
 
-              if [[ "$HTTP_CODE" =~ ^2 ]]; then
-                echo "Upload and ingestion successful."
-                exit 0
-              elif [[ "$HTTP_CODE" == "504" ]]; then
-                echo "Route timed out (HTTP 504) but upload completed successfully."
-                echo "The server continues processing in the background."
-                exit 0
-              elif [[ -z "$HTTP_CODE" || "$HTTP_CODE" == "000" ]]; then
-                echo "Connection closed after upload (no HTTP response received)."
-                echo "This is expected for large datasets that exceed the route timeout."
-                echo "The server continues processing in the background."
-                exit 0
-              else
-                echo "Upload failed with HTTP ${HTTP_CODE}."
-                cat /tmp/response.json 2>/dev/null || true
+                echo "Uploading ${LABEL} to ${TPA_URL}/api/v3/dataset?labels.importer=${LABEL} ..."
+                HTTP_CODE=$(curl -sk -o /tmp/response.json -w "%{http_code}" -X POST \
+                  "${TPA_URL}/api/v3/dataset?labels.importer=${LABEL}" \
+                  -H "Content-Type: application/zip" \
+                  -H "Authorization: Bearer ${TOKEN}" \
+                  --data-binary @/tmp/dataset.zip) || true
+
+                echo "HTTP response: ${HTTP_CODE:-unknown}"
+
+                if [[ "$HTTP_CODE" =~ ^2 ]]; then
+                  echo "${LABEL}: Upload and ingestion successful."
+                elif [[ "$HTTP_CODE" == "504" || -z "$HTTP_CODE" || "$HTTP_CODE" == "000" ]]; then
+                  echo "${LABEL}: Upload accepted (server processing in background)."
+                else
+                  echo "${LABEL}: Upload failed with HTTP ${HTTP_CODE}."
+                  cat /tmp/response.json 2>/dev/null || true
+                  FAILED=1
+                fi
+
+                rm -f /tmp/dataset.zip /tmp/response.json
+              done
+
+              if [[ "$FAILED" -ne 0 ]]; then
+                echo "One or more dataset uploads failed."
                 exit 1
               fi
+
+              echo ""
+              echo "All dataset uploads completed."
           resources:
             requests:
               memory: 256Mi

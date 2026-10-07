@@ -47,7 +47,13 @@ tpa-server:
 
 tpa-dataset:
   namespace: trusted-profile-analyzer
-  datasetUrl: "https://raw.githubusercontent.com/redhat-tssc-tmm/rhdp-tpa-demo/main/datasets/tpa-demo-dataset-v2.zip"
+  datasets:
+    - url: "https://raw.githubusercontent.com/openshift-dev-days/tpa-datasets/main/cvelist-v5-parasol.zip"
+      label: "cvelist-v5"
+    - url: "https://raw.githubusercontent.com/openshift-dev-days/tpa-datasets/main/ghsa-parasol.zip"
+      label: "ghsa-osv"
+    - url: "https://raw.githubusercontent.com/openshift-dev-days/tpa-datasets/main/lightwell-parasol.zip"
+      label: "lightwell-osv"
   image: registry.redhat.io/ubi9/ubi
   keycloak:
     host: ""

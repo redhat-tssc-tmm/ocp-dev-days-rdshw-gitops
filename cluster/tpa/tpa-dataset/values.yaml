@@ -1,7 +1,9 @@
 namespace: trusted-profile-analyzer
 
-datasetUrl: ""
-subdomain: ""
+datasets:
+  - url: ""
+    label: ""
+
 image: registry.redhat.io/ubi9/ubi
 
 keycloak:
