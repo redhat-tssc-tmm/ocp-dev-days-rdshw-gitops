@@ -151,10 +151,6 @@ spec:
                 echo "Chains InstallerSet attestation format updated to slsa/v2alpha4"
               fi
 
-              # Restart the chains controller to pick up the new config
-              oc delete pod -n openshift-pipelines -l app=tekton-chains-controller 2>/dev/null || true
-              echo "Chains controller restarted"
-
               echo "TektonConfig patched"
           resources:
             requests:
