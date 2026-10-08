@@ -72,7 +72,7 @@ spec:
               import json, sys
               for d in json.load(sys.stdin):
                   if d.get("url") and d.get("label"):
-                      print(f"{d[\"label\"]}|{d[\"url\"]}")
+                      print(d["label"] + "|" + d["url"])
               ' | while IFS='|' read -r LABEL URL; do
                 echo ""
                 echo "============================================"
