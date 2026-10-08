@@ -98,7 +98,11 @@ spec:
                     "signers.x509.fulcio.issuer": "https://kubernetes.default.svc",
                     "signers.x509.identity.token.file": "/var/run/sigstore/cosign/oidc-token",
                     "transparency.enabled": true,
-                    "transparency.url": "'"${REKOR_URL}"'"
+                    "transparency.url": "'"${REKOR_URL}"'",
+                    "artifacts.pipelinerun.format": "slsa/v2alpha4",
+                    "artifacts.pipelinerun.storage": "oci",
+                    "artifacts.taskrun.format": "slsa/v2alpha4",
+                    "artifacts.taskrun.storage": "oci"
                   }
                 }
               }'
