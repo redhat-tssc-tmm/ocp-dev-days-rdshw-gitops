@@ -54,6 +54,8 @@ tpa-dataset:
       label: "ghsa-osv"
     - url: "https://raw.githubusercontent.com/openshift-dev-days/tpa-datasets/main/lightwell-parasol.zip"
       label: "lightwell-osv"
+    - url: "https://raw.githubusercontent.com/openshift-dev-days/tpa-datasets/main/legacy-sboms.zip"
+      label: "legacy-sboms"
   image: registry.redhat.io/ubi9/ubi
   keycloak:
     host: ""
