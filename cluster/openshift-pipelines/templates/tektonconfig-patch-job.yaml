@@ -108,30 +108,15 @@ spec:
               }'
               echo "Chains keyless signing configured (TektonConfig CR)"
 
-              # The operator does not always propagate chain config to the
-              # ConfigMap. Patch it directly to ensure the correct format.
-              echo "Patching chains-config ConfigMap directly..."
-              until oc get configmap chains-config -n openshift-pipelines > /dev/null 2>&1; do
-                sleep 5
-              done
-              oc patch configmap chains-config -n openshift-pipelines --type merge -p '{
-                "data": {
-                  "artifacts.pipelinerun.format": "slsa/v2alpha4",
-                  "artifacts.pipelinerun.storage": "oci",
-                  "artifacts.taskrun.format": "slsa/v2alpha4",
-                  "artifacts.taskrun.storage": "oci"
-                }
-              }'
-              echo "chains-config ConfigMap patched"
-
-              # Restart the chains controller to pick up the new config
-              oc delete pod -n openshift-pipelines -l app=tekton-chains-controller 2>/dev/null || true
-              echo "Chains controller restarted"
-
-              # Update the OIDC token audience on the Chains InstallerSet.
+              # Update the OIDC token audience and attestation format on the
+              # Chains InstallerSet. The operator creates ConfigMaps and
+              # Deployments from the InstallerSet — patching the CR alone
+              # does not propagate to the InstallerSet.
               # The operator hardcodes "sigstore" but TAS Fulcio requires
               # "trusted-artifact-signer" as the audience.
-              echo "Patching Chains InstallerSet audience..."
+              echo "Patching Chains InstallerSets..."
+
+              # Patch the Deployment InstallerSet: OIDC audience
               CHAIN_IS=$(oc get tektoninstallersets --no-headers | grep "^chain-" | grep -v "config\|secret" | awk '{print $1}')
               if [ -n "${CHAIN_IS}" ]; then
                 oc get tektoninstallerset ${CHAIN_IS} -o json | \
@@ -147,6 +132,28 @@ spec:
               " | oc replace -f - 2>/dev/null
                 echo "Chains InstallerSet audience updated to trusted-artifact-signer"
               fi
+
+              # Patch the Config InstallerSet: attestation format
+              CHAIN_CFG_IS=$(oc get tektoninstallersets --no-headers | grep "^chain-config" | awk '{print $1}')
+              if [ -n "${CHAIN_CFG_IS}" ]; then
+                oc get tektoninstallerset ${CHAIN_CFG_IS} -o json | \
+                  python3 -c "
+              import json, sys
+              data = json.load(sys.stdin)
+              for m in data['spec']['manifests']:
+                  if m.get('kind') == 'ConfigMap' and m['metadata'].get('name') == 'chains-config':
+                      m['data']['artifacts.pipelinerun.format'] = 'slsa/v2alpha4'
+                      m['data']['artifacts.pipelinerun.storage'] = 'oci'
+                      m['data']['artifacts.taskrun.format'] = 'slsa/v2alpha4'
+                      m['data']['artifacts.taskrun.storage'] = 'oci'
+              json.dump(data, sys.stdout)
+              " | oc replace -f - 2>/dev/null
+                echo "Chains InstallerSet attestation format updated to slsa/v2alpha4"
+              fi
+
+              # Restart the chains controller to pick up the new config
+              oc delete pod -n openshift-pipelines -l app=tekton-chains-controller 2>/dev/null || true
+              echo "Chains controller restarted"
 
               echo "TektonConfig patched"
           resources:
