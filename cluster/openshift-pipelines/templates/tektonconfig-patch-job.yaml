@@ -99,9 +99,9 @@ spec:
                     "signers.x509.identity.token.file": "/var/run/sigstore/cosign/oidc-token",
                     "transparency.enabled": true,
                     "transparency.url": "'"${REKOR_URL}"'",
-                    "artifacts.pipelinerun.format": "slsa/v2alpha4",
+                    "artifacts.pipelinerun.format": "in-toto",
                     "artifacts.pipelinerun.storage": "oci",
-                    "artifacts.taskrun.format": "slsa/v2alpha4",
+                    "artifacts.taskrun.format": "in-toto",
                     "artifacts.taskrun.storage": "oci"
                   }
                 }
@@ -142,9 +142,9 @@ spec:
               data = json.load(sys.stdin)
               for m in data['spec']['manifests']:
                   if m.get('kind') == 'ConfigMap' and m['metadata'].get('name') == 'chains-config':
-                      m['data']['artifacts.pipelinerun.format'] = 'slsa/v2alpha4'
+                      m['data']['artifacts.pipelinerun.format'] = 'in-toto'
                       m['data']['artifacts.pipelinerun.storage'] = 'oci'
-                      m['data']['artifacts.taskrun.format'] = 'slsa/v2alpha4'
+                      m['data']['artifacts.taskrun.format'] = 'in-toto'
                       m['data']['artifacts.taskrun.storage'] = 'oci'
               json.dump(data, sys.stdout)
               " | oc replace -f - 2>/dev/null
