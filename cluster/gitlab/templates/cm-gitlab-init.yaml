@@ -245,7 +245,7 @@ data:
             rm -rf /tmp/conforma-sub
             git clone https://root:{{ $.Values.gitlab.rootPassword }}@{{ $.Values.gitlab.host }}/{{ $item.name }}/conforma-policies.git /tmp/conforma-sub
             cd /tmp/conforma-sub
-            find . -name "*.yaml" -exec sed -i "s/{{ "{{" }}{{ "{{" }} *cluster_subdomain *{{ "}}" }}{{ "}}" }}/{{ $.Values.cluster.subdomain }}/g" {} \;
+            find . -name "*.yaml" -exec sed -i "s/{{ "{{" }} *cluster_subdomain *{{ "}}" }}/{{ $.Values.cluster.subdomain }}/g" {} \;
             if git diff --quiet; then
               echo "No substitutions needed"
             else
