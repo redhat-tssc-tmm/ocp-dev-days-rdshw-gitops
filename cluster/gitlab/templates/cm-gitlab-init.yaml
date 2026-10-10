@@ -240,12 +240,25 @@ data:
 {{- end }}
 {{- end }}
 
+        - name: Clone conforma-policies for substitution
+          ansible.builtin.git:
+            repo: https://root:{{ $.Values.gitlab.rootPassword }}@{{ $.Values.gitlab.host }}/{{ $item.name }}/conforma-policies.git
+            dest: /tmp/conforma-sub
+            version: main
+          environment:
+            GIT_SSL_NO_VERIFY: "true"
+          ignore_errors: true
+
         - name: Substitute cluster_subdomain in conforma-policies
+          ansible.builtin.replace:
+            path: /tmp/conforma-sub/policies/parasol-software-supply-chain/policy.yaml
+            regexp: '\{\{\s*cluster_subdomain\s*\}\}'
+            replace: '{{ $.Values.cluster.subdomain }}'
+          ignore_errors: true
+
+        - name: Push substituted conforma-policies
           ansible.builtin.shell: |
-            rm -rf /tmp/conforma-sub
-            git clone https://root:{{ $.Values.gitlab.rootPassword }}@{{ $.Values.gitlab.host }}/{{ $item.name }}/conforma-policies.git /tmp/conforma-sub
             cd /tmp/conforma-sub
-            find . -name "*.yaml" -exec sed -i "s/{{ "{{" }} *cluster_subdomain *{{ "}}" }}/{{ $.Values.cluster.subdomain }}/g" {} \;
             if git diff --quiet; then
               echo "No substitutions needed"
             else
