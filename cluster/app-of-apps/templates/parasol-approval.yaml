@@ -1,0 +1,17 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+{{ include "app-of-apps.metadata" (dict "name" "parasol-approval" "namespace" .Values.argocd.namespace "syncWave" "4") }}
+spec:
+  destination:
+    namespace: parasol-approval
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    path: cluster/parasol-approval
+    repoURL: {{ .Values.gitops.repoURL }}
+    targetRevision: {{ .Values.gitops.targetRevision }}
+    helm:
+      parameters:
+        - name: cluster_subdomain
+          value: {{ .Values.cluster.subdomain }}
+{{ include "app-of-apps.syncPolicy" . | indent 2 }}

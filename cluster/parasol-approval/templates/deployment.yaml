@@ -1,0 +1,144 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: parasol-approval
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: parasol-approval
+  namespace: parasol-approval
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: parasol-approval-reader
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+    resourceNames: ["quay-push-secret"]
+  - apiGroups: ["config.openshift.io"]
+    resources: ["ingresses"]
+    verbs: ["get"]
+    resourceNames: ["cluster"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: parasol-approval-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: parasol-approval-reader
+subjects:
+  - kind: ServiceAccount
+    name: parasol-approval
+    namespace: parasol-approval
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: parasol-approval
+  namespace: parasol-approval
+  labels:
+    app: parasol-approval
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: parasol-approval
+  template:
+    metadata:
+      labels:
+        app: parasol-approval
+    spec:
+      serviceAccountName: parasol-approval
+      initContainers:
+        - name: fetch-cosign
+          image: registry.access.redhat.com/ubi9:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              echo "Fetching cosign from TAS CLI server..."
+              curl -sSfL http://cli-server.trusted-artifact-signer.svc:8080/clients/linux/cosign-amd64.gz -o /tmp/cosign.gz
+              gunzip /tmp/cosign.gz
+              mv /tmp/cosign /shared/cosign
+              chmod +x /shared/cosign
+              echo "cosign binary ready at /shared/cosign"
+              /shared/cosign version
+          volumeMounts:
+            - name: cosign-bin
+              mountPath: /shared
+      containers:
+        - name: parasol-approval
+          image: quay.io/tssc_demos/devday-parasol-approval:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: COSIGN_BIN
+              value: "/shared/cosign"
+            - name: HOME
+              value: "/tmp"
+            - name: GIN_MODE
+              value: "release"
+          volumeMounts:
+            - name: cosign-bin
+              mountPath: /shared
+              readOnly: true
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 10
+      volumes:
+        - name: cosign-bin
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: parasol-approval
+  namespace: parasol-approval
+spec:
+  selector:
+    app: parasol-approval
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: parasol-approval
+  namespace: parasol-approval
+spec:
+  host: parasol-approval.{{ .Values.cluster_subdomain }}
+  to:
+    kind: Service
+    name: parasol-approval
+  port:
+    targetPort: 8080
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

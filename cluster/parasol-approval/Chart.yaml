@@ -1,0 +1,4 @@
+apiVersion: v2
+name: parasol-approval-process
+description: Parasol Insurance approval process for image promotion
+version: 1.0.0
