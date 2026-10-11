@@ -94,37 +94,6 @@ spec:
               EOF
               echo "TrustRoot created."
 
-              echo "=== Step 3: Patch PolicyController CR ==="
-              oc patch policycontroller policy-controller -n {{ .Values.controllerNamespace }} --type merge -p '{
-                "spec": {
-                  "policy-controller": {
-                    "webhook": {
-                      "env": {
-                        "KUBERNETES_MIN_VERSION": "1.29.0-0",
-                        "DOCKER_CONFIG": "/home/nonroot/.docker"
-                      },
-                      "volumes": [
-                        {
-                          "name": "registry-auth",
-                          "secret": {
-                            "secretName": "registry-pull-secret",
-                            "items": [{"key": ".dockerconfigjson", "path": "config.json"}]
-                          }
-                        }
-                      ],
-                      "volumeMounts": [
-                        {
-                          "name": "registry-auth",
-                          "mountPath": "/home/nonroot/.docker",
-                          "readOnly": true
-                        }
-                      ]
-                    }
-                  }
-                }
-              }'
-              echo "PolicyController CR patched."
-
               echo "Setup complete."
           resources:
             requests:
