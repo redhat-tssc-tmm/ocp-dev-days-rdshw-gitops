@@ -13,13 +13,6 @@ rules:
   - apiGroups: ["policy.sigstore.dev"]
     resources: ["trustroots"]
     verbs: ["get", "create", "update", "patch"]
-  - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: ["get", "create"]
-    resourceNames: ["pull-secret"]
-  - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: ["get", "list", "create", "update"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -59,18 +52,7 @@ spec:
             - |
               set -euo pipefail
 
-              echo "=== Step 1: Copy cluster pull secret ==="
-              if ! oc get secret registry-pull-secret -n {{ .Values.controllerNamespace }} > /dev/null 2>&1; then
-                oc get secret pull-secret -n openshift-config -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d > /tmp/pull-secret.json
-                oc create secret docker-registry registry-pull-secret \
-                  -n {{ .Values.controllerNamespace }} \
-                  --from-file=.dockerconfigjson=/tmp/pull-secret.json
-                echo "Pull secret created."
-              else
-                echo "Pull secret already exists."
-              fi
-
-              echo "=== Step 2: Create TrustRoot from TUF ==="
+              echo "=== Creating TrustRoot from TUF ==="
               ROOT_JSON=""
               for i in $(seq 1 60); do
                 ROOT_JSON=$(curl -sf http://tuf.trusted-artifact-signer.svc/root.json 2>/dev/null) || true
