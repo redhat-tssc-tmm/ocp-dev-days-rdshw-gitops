@@ -71,14 +71,22 @@ spec:
               fi
 
               echo "=== Step 2: Create TrustRoot from TUF ==="
-              for i in $(seq 1 30); do
-                ROOT_JSON=$(curl -s http://tuf.trusted-artifact-signer.svc/root.json 2>/dev/null) || true
-                if echo "$ROOT_JSON" | python3 -c "import json,sys; json.load(sys.stdin)" 2>/dev/null; then
+              ROOT_JSON=""
+              for i in $(seq 1 60); do
+                ROOT_JSON=$(curl -sf http://tuf.trusted-artifact-signer.svc/root.json 2>/dev/null) || true
+                if [ -n "$ROOT_JSON" ] && echo "$ROOT_JSON" | python3 -c "import json,sys; json.load(sys.stdin)" 2>/dev/null; then
+                  echo "  TUF root.json fetched (attempt ${i})"
                   break
                 fi
-                echo "  TUF not ready, retrying in 10s... (attempt ${i}/30)"
+                echo "  TUF not ready, retrying in 10s... (attempt ${i}/60)"
+                ROOT_JSON=""
                 sleep 10
               done
+
+              if [ -z "$ROOT_JSON" ]; then
+                echo "ERROR: Failed to fetch TUF root.json after 60 attempts"
+                exit 1
+              fi
 
               ROOT_B64=$(echo "$ROOT_JSON" | base64 -w0)
 
