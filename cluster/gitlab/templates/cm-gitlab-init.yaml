@@ -241,12 +241,12 @@ data:
 {{- end }}
 
         - name: Clone conforma-policies for substitution
-          ansible.builtin.git:
-            repo: https://root:{{ $.Values.gitlab.rootPassword }}@{{ $.Values.gitlab.host }}/{{ $item.name }}/conforma-policies.git
-            dest: /tmp/conforma-sub
-            version: main
+          ansible.builtin.shell: |
+            rm -rf /tmp/conforma-sub
+            git clone https://root:{{ $.Values.gitlab.rootPassword }}@{{ $.Values.gitlab.host }}/{{ $item.name }}/conforma-policies.git /tmp/conforma-sub 2>/dev/null
           environment:
             GIT_SSL_NO_VERIFY: "true"
+          register: r_clone_conforma
           ignore_errors: true
 
         - name: Substitute cluster_subdomain in conforma-policies
@@ -254,6 +254,7 @@ data:
             path: /tmp/conforma-sub/policies/parasol-software-supply-chain/policy.yaml
             regexp: '\{\{\s*cluster_subdomain\s*\}\}'
             replace: '{{ $.Values.cluster.subdomain }}'
+          when: r_clone_conforma is succeeded
           ignore_errors: true
 
         - name: Push substituted conforma-policies
@@ -269,6 +270,7 @@ data:
             rm -rf /tmp/conforma-sub
           environment:
             GIT_SSL_NO_VERIFY: "true"
+          when: r_clone_conforma is succeeded
           ignore_errors: true
 
 {{- if $item.project }}
