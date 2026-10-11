@@ -7,4 +7,8 @@ metadata:
   name: {{ $prefix }}-{{ $ns }}
   annotations:
     argocd.argoproj.io/sync-wave: "-1"
+{{- if eq $ns "secured-prod" }}
+  labels:
+    policy.rhtas.com/include: "true"
+{{- end }}
 {{- end }}

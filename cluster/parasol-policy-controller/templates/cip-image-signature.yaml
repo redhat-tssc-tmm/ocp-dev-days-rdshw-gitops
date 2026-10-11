@@ -1,0 +1,24 @@
+apiVersion: policy.sigstore.dev/v1beta1
+kind: ClusterImagePolicy
+metadata:
+  name: parasol-image-signature-required
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  images:
+    - glob: "**"
+  authorities:
+    - name: tekton-chains
+      keyless:
+        trustRootRef: parasol-tas
+        insecureIgnoreSCT: true
+        identities:
+          - issuerRegExp: "https://kubernetes\\.default\\.svc"
+            subjectRegExp: ".*tekton-chains-controller.*"
+      ctlog:
+        trustRootRef: parasol-tas
+        url: http://rekor-server.trusted-artifact-signer.svc
+    - name: redhat-signed
+      key:
+        secretRef:
+          name: redhat-release3-key

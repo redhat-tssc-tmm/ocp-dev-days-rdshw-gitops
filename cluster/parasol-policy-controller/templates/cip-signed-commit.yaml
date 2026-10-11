@@ -1,0 +1,39 @@
+apiVersion: policy.sigstore.dev/v1beta1
+kind: ClusterImagePolicy
+metadata:
+  name: parasol-signed-commit-required
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  images:
+    - glob: "**"
+  authorities:
+    - name: chains-provenance
+      keyless:
+        trustRootRef: parasol-tas
+        insecureIgnoreSCT: true
+        identities:
+          - issuerRegExp: "https://kubernetes\\.default\\.svc"
+            subjectRegExp: ".*tekton-chains-controller.*"
+      ctlog:
+        trustRootRef: parasol-tas
+        url: http://rekor-server.trusted-artifact-signer.svc
+      attestations:
+        - name: signed-commit-check
+          predicateType: "https://slsa.dev/provenance/v0.2"
+          policy:
+            type: rego
+            data: |
+              package sigstore
+              default isCompliant = false
+              isCompliant {
+                task := input.predicate.buildConfig.tasks[_]
+                task.name == "verify-commit-signature"
+                result := task.results[_]
+                result.name == "SIGNATURE_STATUS"
+                result.value == "SIGNED"
+              }
+    - name: redhat-signed
+      key:
+        secretRef:
+          name: redhat-release3-key

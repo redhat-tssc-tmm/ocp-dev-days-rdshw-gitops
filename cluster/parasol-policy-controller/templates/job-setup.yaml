@@ -1,0 +1,135 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: policy-controller-setup
+  namespace: {{ .Values.controllerNamespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: policy-controller-setup
+rules:
+  - apiGroups: ["policy.sigstore.dev"]
+    resources: ["trustroots"]
+    verbs: ["get", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create"]
+    resourceNames: ["pull-secret"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "create", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: policy-controller-setup
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: policy-controller-setup
+subjects:
+  - kind: ServiceAccount
+    name: policy-controller-setup
+    namespace: {{ .Values.controllerNamespace }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: policy-controller-setup
+  namespace: {{ .Values.controllerNamespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 10
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: policy-controller-setup
+      containers:
+        - name: setup
+          image: image-registry.openshift-image-registry.svc:5000/openshift/cli:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+
+              echo "=== Step 1: Copy cluster pull secret ==="
+              if ! oc get secret registry-pull-secret -n {{ .Values.controllerNamespace }} > /dev/null 2>&1; then
+                oc get secret pull-secret -n openshift-config -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d > /tmp/pull-secret.json
+                oc create secret docker-registry registry-pull-secret \
+                  -n {{ .Values.controllerNamespace }} \
+                  --from-file=.dockerconfigjson=/tmp/pull-secret.json
+                echo "Pull secret created."
+              else
+                echo "Pull secret already exists."
+              fi
+
+              echo "=== Step 2: Create TrustRoot from TUF ==="
+              for i in $(seq 1 30); do
+                ROOT_JSON=$(curl -s http://tuf.trusted-artifact-signer.svc/root.json 2>/dev/null) || true
+                if echo "$ROOT_JSON" | python3 -c "import json,sys; json.load(sys.stdin)" 2>/dev/null; then
+                  break
+                fi
+                echo "  TUF not ready, retrying in 10s... (attempt ${i}/30)"
+                sleep 10
+              done
+
+              ROOT_B64=$(echo "$ROOT_JSON" | base64 -w0)
+
+              cat <<EOF | oc apply -f -
+              apiVersion: policy.sigstore.dev/v1alpha1
+              kind: TrustRoot
+              metadata:
+                name: parasol-tas
+              spec:
+                remote:
+                  mirror: http://tuf.trusted-artifact-signer.svc
+                  root: ${ROOT_B64}
+              EOF
+              echo "TrustRoot created."
+
+              echo "=== Step 3: Patch PolicyController CR ==="
+              oc patch policycontroller policy-controller -n {{ .Values.controllerNamespace }} --type merge -p '{
+                "spec": {
+                  "policy-controller": {
+                    "webhook": {
+                      "env": {
+                        "KUBERNETES_MIN_VERSION": "1.29.0-0",
+                        "DOCKER_CONFIG": "/home/nonroot/.docker"
+                      },
+                      "volumes": [
+                        {
+                          "name": "registry-auth",
+                          "secret": {
+                            "secretName": "registry-pull-secret",
+                            "items": [{"key": ".dockerconfigjson", "path": "config.json"}]
+                          }
+                        }
+                      ],
+                      "volumeMounts": [
+                        {
+                          "name": "registry-auth",
+                          "mountPath": "/home/nonroot/.docker",
+                          "readOnly": true
+                        }
+                      ]
+                    }
+                  }
+                }
+              }'
+              echo "PolicyController CR patched."
+
+              echo "Setup complete."
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi

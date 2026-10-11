@@ -1,0 +1,35 @@
+apiVersion: policy.sigstore.dev/v1beta1
+kind: ClusterImagePolicy
+metadata:
+  name: parasol-release-approval-required
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  images:
+    - glob: "**"
+  authorities:
+    - name: user-approval
+      keyless:
+        trustRootRef: parasol-tas
+        insecureIgnoreSCT: true
+        identities:
+          - issuerRegExp: ".*"
+            subjectRegExp: ".*@demo\\.redhat\\.com"
+      ctlog:
+        trustRootRef: parasol-tas
+        url: http://rekor-server.trusted-artifact-signer.svc
+      attestations:
+        - name: release-approved
+          predicateType: "https://parasol-insurance.com/releases/v1"
+          policy:
+            type: rego
+            data: |
+              package sigstore
+              default isCompliant = false
+              isCompliant {
+                input.predicate.release.approved == true
+              }
+    - name: redhat-signed
+      key:
+        secretRef:
+          name: redhat-release3-key

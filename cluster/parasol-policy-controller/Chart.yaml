@@ -1,0 +1,4 @@
+apiVersion: v2
+name: parasol-policy-controller
+description: Sigstore Policy Controller configuration for Parasol secured pipeline
+version: 1.0.0
