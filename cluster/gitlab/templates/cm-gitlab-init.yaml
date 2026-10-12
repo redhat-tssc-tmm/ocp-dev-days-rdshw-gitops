@@ -243,7 +243,8 @@ data:
         - name: Clone conforma-policies for substitution
           ansible.builtin.shell: |
             rm -rf /tmp/conforma-sub
-            git clone https://root:{{ $.Values.gitlab.rootPassword }}@{{ $.Values.gitlab.host }}/{{ $item.name }}/conforma-policies.git /tmp/conforma-sub 2>/dev/null
+            git clone https://root:{{ $.Values.gitlab.rootPassword }}@{{ $.Values.gitlab.host }}/{{ $item.name }}/conforma-policies.git /tmp/conforma-sub
+            test -f /tmp/conforma-sub/policies/parasol-software-supply-chain/policy.yaml
           environment:
             GIT_SSL_NO_VERIFY: "true"
           register: r_clone_conforma

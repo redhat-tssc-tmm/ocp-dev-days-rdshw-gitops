@@ -87,16 +87,19 @@ spec:
 
               ROOT_B64=$(echo "$ROOT_JSON" | base64 -w0)
 
-              cat <<EOF | oc apply -f -
-              apiVersion: policy.sigstore.dev/v1alpha1
-              kind: TrustRoot
-              metadata:
-                name: parasol-tas
-              spec:
-                remote:
-                  mirror: http://tuf.trusted-artifact-signer.svc
-                  root: ${ROOT_B64}
-              EOF
+              python3 -c "
+              import json
+              tr = {
+                  'apiVersion': 'policy.sigstore.dev/v1alpha1',
+                  'kind': 'TrustRoot',
+                  'metadata': {'name': 'parasol-tas'},
+                  'spec': {'remote': {
+                      'mirror': 'http://tuf.trusted-artifact-signer.svc',
+                      'root': '${ROOT_B64}'
+                  }}
+              }
+              print(json.dumps(tr))
+              " | oc apply -f -
               echo "TrustRoot created."
 
               echo "Setup complete."
