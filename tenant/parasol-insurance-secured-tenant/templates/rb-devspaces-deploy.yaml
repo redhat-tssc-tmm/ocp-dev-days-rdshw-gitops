@@ -1,0 +1,15 @@
+{{- $prefix := include "parasol-insurance-secured-tenant.prefix" . -}}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $prefix }}-devspaces-deploy
+  namespace: {{ $prefix }}-secured-prod
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: edit
+subjects:
+  - kind: Group
+    name: system:serviceaccounts:{{ $prefix }}-devspaces
+    apiGroup: rbac.authorization.k8s.io
