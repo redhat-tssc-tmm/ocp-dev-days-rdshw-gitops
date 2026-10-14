@@ -50,6 +50,8 @@ gitlab:
           # url: https://github.com/openshift-dev-days/parasol-insurance.git
           url: https://github.com/redhat-tssc-tmm/parasol-insurance.git
           sourceBranch: module2
+        - name: parasol-insurance-eap
+          url: https://github.com/openshift-dev-days/parasol-insurance-eap.git
         - name: parasol-insurance-manifests
           # url: https://github.com/openshift-dev-days/parasol-insurance-manifests.git
           url: https://github.com/redhat-tssc-tmm/parasol-insurance-manifests.git
