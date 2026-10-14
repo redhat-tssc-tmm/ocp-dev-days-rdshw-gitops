@@ -135,7 +135,7 @@ tpa:
   name: tpa
   namespace: trusted-profile-analyzer
   rhdaNamespace: rhda-backend
-  chartVersion: "*"
+  chartVersion: "3.1.1"
   images:
     dbMonitor: quay.io/tssc_demos/tpa-db-monitor:latest
     rhdaBackend: quay.io/tssc_demos/trustify-dependency-analytics:v3.1.0

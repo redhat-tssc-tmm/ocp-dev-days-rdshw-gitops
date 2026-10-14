@@ -92,6 +92,9 @@ spec:
                 name: tpa-postgresql-credentials
                 key: db.adminpassword
         modules:
+          server:
+            recommendPatterns:
+              - "^(.+)\\.rhlw-[0-9]+$"
           createDatabase:
             enabled: {{ .Values.modules.createDatabase.enabled }}
           migrateDatabase:
