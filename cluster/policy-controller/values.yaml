@@ -1,8 +1,8 @@
 namespace: policy-controller-operator
 
 subscription:
-  channel: stable
+  channel: stable-v1.1
   installPlanApproval: Automatic
   name: policy-controller-operator
-  source: redhat-operators-snapshot
+  source: redhat-operators
   sourceNamespace: openshift-marketplace
