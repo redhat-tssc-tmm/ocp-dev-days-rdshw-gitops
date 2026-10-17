@@ -258,6 +258,19 @@ data:
           when: r_clone_conforma is succeeded
           ignore_errors: true
 
+        - name: Unprotect main branch on conforma-policies before pushing
+          ansible.builtin.uri:
+            url: https://{{ $.Values.gitlab.host }}/api/v4/projects/{{ $item.name }}%2Fconforma-policies/protected_branches/main
+            method: DELETE
+            headers:
+              PRIVATE-TOKEN: '{{ "{{" }} root_token {{ "}}" }}'
+            validate_certs: false
+            status_code:
+              - 204
+              - 404
+          when: r_clone_conforma is succeeded
+          ignore_errors: true
+
         - name: Push substituted conforma-policies
           ansible.builtin.shell: |
             cd /tmp/conforma-sub
@@ -271,6 +284,25 @@ data:
             rm -rf /tmp/conforma-sub
           environment:
             GIT_SSL_NO_VERIFY: "true"
+          when: r_clone_conforma is succeeded
+          ignore_errors: true
+
+        - name: Re-protect main branch on conforma-policies
+          ansible.builtin.uri:
+            url: https://{{ $.Values.gitlab.host }}/api/v4/projects/{{ $item.name }}%2Fconforma-policies/protected_branches
+            method: POST
+            body_format: form-urlencoded
+            body:
+              name: main
+              push_access_level: 40
+              merge_access_level: 40
+            headers:
+              PRIVATE-TOKEN: '{{ "{{" }} root_token {{ "}}" }}'
+            validate_certs: false
+            status_code:
+              - 200
+              - 201
+              - 409
           when: r_clone_conforma is succeeded
           ignore_errors: true
 
