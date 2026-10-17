@@ -1,7 +1,7 @@
 rhtas-operator:
   namespace: trusted-artifact-signer
   subscription:
-    source: redhat-operators-snapshot
+    source: redhat-operators
 
 rhtas-instance:
   namespace: trusted-artifact-signer
