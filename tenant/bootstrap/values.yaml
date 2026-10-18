@@ -17,8 +17,7 @@ argocd:
 gitops:
   # repoURL: https://github.com/rhpds/ocp-dev-days-rdshw-gitops.git
   repoURL: https://github.com/redhat-tssc-tmm/ocp-dev-days-rdshw-gitops.git
-  # targetRevision: main
-  targetRevision: module2
+  targetRevision: main
 
 vault:
   name: vault

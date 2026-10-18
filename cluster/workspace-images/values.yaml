@@ -11,8 +11,7 @@ namespace: "workspace-images"
 git:
   # uri: "https://github.com/openshift-dev-days/workspace-images.git"
   uri: "https://github.com/redhat-tssc-tmm/workspace-images.git"
-  # ref: "main"
-  ref: "module2"
+  ref: "main"
   contextDir: "cekit-builder-image"
 
 # Image registry configuration
