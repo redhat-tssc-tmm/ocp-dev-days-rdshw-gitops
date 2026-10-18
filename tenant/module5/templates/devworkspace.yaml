@@ -58,6 +58,9 @@ spec:
             {{- end }}
             - name: VSCODE_TRUSTED_EXTENSIONS
               value: "redhat.mta-vscode-extension,redhat.mta-core,redhat.mta-java,redhat.mta-csharp,redhat.mta-go,redhat.mta-javascript"
+            # Open the repo .code-workspace so extensions.recommendations / settings apply
+            - name: VSCODE_DEFAULT_WORKSPACE
+              value: "/projects/{{ .Values.devworkspace.projectName }}/{{ .Values.devworkspace.projectName }}.code-workspace"
             - name: HOST_USERS
               value: 'false'
             - name: OCP_USER
