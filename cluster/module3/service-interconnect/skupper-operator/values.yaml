@@ -5,7 +5,7 @@ subscription:
   installPlanApproval: Manual
   startingCSV: skupper-operator.v2.1.4-rh-3
   name: skupper-operator
-  source: redhat-operators
+  source: redhat-operators-snapshot
   sourceNamespace: openshift-marketplace
 
 argocd:
