@@ -36,10 +36,11 @@ metadata:
   name: policy-controller-setup
   namespace: {{ .Values.controllerNamespace }}
   annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
     argocd.argoproj.io/sync-wave: "3"
 spec:
   backoffLimit: 10
-  ttlSecondsAfterFinished: 300
   template:
     spec:
       restartPolicy: OnFailure
