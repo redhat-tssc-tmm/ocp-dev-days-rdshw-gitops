@@ -8,7 +8,7 @@ devspaces:
     channel: stable
     installPlanApproval: Manual
     name: devspaces
-    source: redhat-operators-snapshot
+    source: redhat-operators
     startingCSV: "devspacesoperator.v3.30.0"
     sourceNamespace: openshift-marketplace
 
