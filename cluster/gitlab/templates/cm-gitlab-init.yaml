@@ -348,10 +348,13 @@ data:
 
         - name: Push substituted conforma-policies
           ansible.builtin.shell: |
+            set -euo pipefail
             cd /tmp/conforma-sub
             if git diff --quiet; then
               echo "No substitutions needed"
             else
+              git config user.email "admin@parasol-insurance.local"
+              git config user.name "admin"
               git add -A
               git commit -m "chore: substitute cluster_subdomain"
               git push origin main
