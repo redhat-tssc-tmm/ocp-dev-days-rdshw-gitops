@@ -4,10 +4,10 @@ fullnameOverride: ""
 namespace: openshift-operators
 
 subscription:
-  channel: stable
+  channel: amq-streams-3.1.x
   installPlanApproval: Automatic
   name: amq-streams
-  source: redhat-operators
+  source: redhat-operators-snapshot
   sourceNamespace: openshift-marketplace
   operationTimeoutMs: "600000"
 

@@ -3,10 +3,10 @@ nameOverride: "rhacs"
 namespace: rhacs-operator
 
 subscription:
-  channel: stable
+  channel: rhacs-4.11
   installPlanApproval: Automatic
   name: rhacs-operator
-  source: redhat-operators-snapshot
+  source: redhat-operators
   sourceNamespace: openshift-marketplace
 
 argocd:

@@ -10,8 +10,4 @@ spec:
     path: cluster/policy-controller
     repoURL: {{ .Values.gitops.repoURL }}
     targetRevision: {{ .Values.gitops.targetRevision }}
-    helm:
-      valuesObject:
-        subscription:
-          source: {{ include "app-of-apps.operatorSource" . }}
 {{ include "app-of-apps.syncPolicy" . | indent 2 }}

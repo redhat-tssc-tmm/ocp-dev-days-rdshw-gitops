@@ -1,11 +1,11 @@
 namespace: kuadrant-system
 
 subscription:
-  channel: stable
+  channel: stable-1.4
   installPlanApproval: Manual
   startingCSV: rhcl-operator.v1.4.2
   name: rhcl-operator
-  source: redhat-operators
+  source: redhat-operators-snapshot
   sourceNamespace: openshift-marketplace
 
 argocd:

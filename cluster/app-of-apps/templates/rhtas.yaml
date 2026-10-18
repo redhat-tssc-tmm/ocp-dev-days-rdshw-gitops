@@ -13,9 +13,6 @@ spec:
     targetRevision: {{ .Values.gitops.targetRevision }}
     helm:
       valuesObject:
-        rhtas-operator:
-          subscription:
-            source: {{ include "app-of-apps.operatorSource" . }}
         rhtas-instance:
           namespace: {{ .Values.rhtas.namespace }}
           instance: {{ .Values.rhtas.instance }}

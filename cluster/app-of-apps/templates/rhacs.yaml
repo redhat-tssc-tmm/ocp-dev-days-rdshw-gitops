@@ -23,9 +23,6 @@ spec:
     targetRevision: {{ .Values.gitops.targetRevision }}
     helm:
       valuesObject:
-        rhacs-operator:
-          subscription:
-            source: {{ include "app-of-apps.operatorSource" . }}
         rhacs-central:
           namespace: {{ .Values.rhacs.namespace }}
           cluster:
