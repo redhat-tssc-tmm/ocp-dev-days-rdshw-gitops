@@ -4,7 +4,7 @@ Helm charts and ArgoCD manifests for the OpenShift Developer Experience workshop
 
 ## Architecture Overview
 
-This workshop uses a multi-tenant model on a shared OpenShift cluster. Each participant (tenant) gets isolated resources provisioned on-demand, including a Parasol Insurance application, CI/CD pipelines, and a Developer Hub catalog entry.
+This workshop uses a multi-tenant model on a shared OpenShift cluster. Each participant (tenant) gets isolated resources provisioned on-demand, including a Parasol Insurance application, CI/CD pipelines, a secured software supply chain, and a Developer Hub catalog entry.
 
 ### Cluster-Level Components
 
@@ -12,6 +12,7 @@ Deployed once via the **app-of-apps** pattern (`cluster/app-of-apps/`):
 
 | Component | Chart Path | Description |
 |-----------|-----------|-------------|
+| Catalog Sources | `cluster/catalog-sources/` | OLM catalog snapshot for operator version pinning |
 | Vault | `cluster/vault/` | HashiCorp Vault for secrets management |
 | External Secrets | `cluster/external-secrets/` | Syncs Vault secrets to Kubernetes Secrets |
 | GitLab | `cluster/gitlab/` | Source code hosting (repos imported from GitHub) |
@@ -19,11 +20,35 @@ Deployed once via the **app-of-apps** pattern (`cluster/app-of-apps/`):
 | OpenShift Pipelines | `cluster/openshift-pipelines/` | Tekton operator |
 | Dev Spaces | `cluster/devspaces/` | Cloud development environments |
 | OpenVSX | `cluster/openvsx/` | VS Code extension registry for Dev Spaces |
+| Workspace Images | `cluster/workspace-images/` | Custom DevSpaces workspace images (gitsign, syft) |
 | SonarQube | `cluster/sonarqube/` | Code quality analysis |
-| AMQ Streams | `cluster/amq-streams/` | Kafka operator |
+| AMQ Streams | `cluster/amq-streams/` | Kafka operator and broker |
 | Developer Hub Prereqs | `cluster/developer-hub-prereqs/` | RHDH operator (v1.9) + SA token writer |
 | Developer Hub | `cluster/developer-hub/` | Backstage CR, app-config, RBAC, plugins |
 | Tenant Prereqs | `cluster/tenant-prereqs/` | Shared tenant RBAC, clusterinterceptors CRB |
+| RHACS | `cluster/rhacs/` | Advanced Cluster Security (Central, SecuredCluster, SSO) |
+| RHTAS | `cluster/rhtas/` | Trusted Artifact Signer (Fulcio, Rekor, TUF, CT Log) |
+| TPA | `cluster/tpa/` | Trusted Profile Analyzer (SBOM analysis, RHDA backend) |
+| Policy Controller | `cluster/policy-controller/` | Sigstore policy-controller operator |
+| Parasol Policy Controller | `cluster/parasol-policy-controller/` | ClusterImagePolicies + TrustRoot setup |
+| Parasol Approval | `cluster/parasol-approval/` | Release approval web app for signed attestations |
+
+### Module 3 Components
+
+Deployed via a nested app-of-apps (`cluster/module3/app-of-apps/`):
+
+| Component | Chart Path | Description |
+|-----------|-----------|-------------|
+| Connectivity Link | `cluster/module3/connectivity-link/` | Kuadrant operator + AI Gateway |
+| Service Interconnect | `cluster/module3/service-interconnect/` | Skupper operator |
+| Shared Database | `cluster/module3/shared-database/` | Shared PostgreSQL for multi-site |
+| Camel Flows | `cluster/module3/camel-flows/` | Camel K integration flows |
+| RocketChat | `cluster/module3/rocketchat/` | Team messaging |
+| Matrix | `cluster/module3/matrix/` | Matrix messaging server |
+| Helpdesk | `cluster/module3/helpdesk/` | Helpdesk application |
+| Filestash | `cluster/module3/filestash/` | File management UI |
+| Showroom | `cluster/module3/showroom/` | Workshop lab guide |
+| Admin | `cluster/module3/admin/` | Admin namespace with Vault/S3 seed jobs |
 
 ### Tenant Provisioning
 
@@ -36,17 +61,83 @@ Each tenant is provisioned by the RHDP platform running Ansible workloads define
 The tenant bootstrap chart (`tenant/bootstrap/`) runs a Job that:
 
 - Creates the user in GitLab and Quay
-- **Imports** (not forks) `parasol-insurance` and `parasol-insurance-manifests` repos from the `parasol` group into the user's GitLab namespace
+- **Imports** (not forks) `parasol-insurance`, `parasol-insurance-manifests`, `parasol-insurance-secured`, and `parasol-insurance-secured-manifests` repos from the `parasol` group into the user's GitLab namespace
 - Sets repos to **public** visibility (ArgoCD has no GitLab credentials)
 - Unprotects the `main` branch (mirror push carries protection)
 - Templates `catalog-info.yaml` with the user's GUID and cluster subdomain
 - Commits and pushes the templated catalog-info
 
-The tenant parasol-insurance chart (`tenant/parasol-insurance-tenant/`) creates:
+### Tenant Charts
 
-- **Namespaces**: `<username>-dev`, `<username>-build`, `<username>-prod`
-- **ArgoCD Applications**: `<username>-dev`, `<username>-prod` (deploy the app), `<username>-build` (deploy the CI/CD pipeline)
-- Kafka topic, resource quotas, RBAC
+| Chart | Path | Description |
+|-------|------|-------------|
+| Bootstrap | `tenant/bootstrap/` | User provisioning job, child app creation |
+| Parasol Insurance | `tenant/parasol-insurance-tenant/` | Base app: build/dev/prod namespaces, pipelines, ArgoCD apps |
+| Parasol Insurance Secured | `tenant/parasol-insurance-secured-tenant/` | Secured app: build/preprod/prod namespaces, secured pipelines, ArgoCD apps |
+| Module 3 Workload | `tenant/module3/` | Per-tenant Kafka, Camel, DevWorkspace, DB, messaging |
+| Module 5 Workload | `tenant/module5/` | Per-tenant MTA migration namespace and DevWorkspace |
+
+## Secured Software Supply Chain
+
+The secured pipeline adds signing, attestation, and policy enforcement on top of the base CI/CD pipeline.
+
+### Components
+
+- **Trusted Artifact Signer (RHTAS)** -- provides Fulcio (certificate authority), Rekor (transparency log), and cosign/gitsign binaries for keyless signing
+- **Tekton Chains** -- automatically signs pipeline runs and attests build provenance (SLSA v0.2)
+- **Gitsign** -- signs git commits in DevSpaces using the developer's Keycloak identity
+- **Enterprise Contract (EC)** -- validates images against Conforma/Rego policies before promotion
+- **Policy Controller** -- enforces ClusterImagePolicies on deployments (signature verification, signed commits, release approval)
+- **Parasol Approval** -- web application for human release approval with signed attestations
+- **ACS (RHACS)** -- image vulnerability scanning and policy enforcement
+- **TPA** -- SBOM generation, upload, and dependency analysis
+
+### Secured Pipeline Flow
+
+```
+Developer commit (gitsign-signed)
+  → GitLab webhook
+  → MR Check pipeline (sandbox build, SonarQube, ACS scan)
+  → Merge to main
+  → Push pipeline:
+      Clone → Maven Build → SonarQube → ACS Image Check → ACS Image Scan
+      → Buildah Build+Push → Verify Commit Signature → Generate SBOM
+      → Tekton Chains signs + attests
+  → Tag + Promote pipeline:
+      Get Image SHA → EC Validate (Conforma policies) → Skopeo Copy to prod
+      → Update prod manifest → Report status to GitLab
+  → Release Approval (human signs attestation via Parasol Approval app)
+  → Policy Controller enforces on deployment
+```
+
+### Conforma Policies
+
+Custom Rego policies in the [conforma-policies](https://github.com/openshift-dev-days/conforma-policies) repo, evaluated by EC during the tag-promote pipeline:
+
+| Policy | Type | What it checks |
+|--------|------|----------------|
+| acs_image_check | deny | ACS image policy check task ran and passed |
+| acs_image_scan | deny/warn | ACS scan task ran; warns on vulnerabilities |
+| commit_signature | deny | Commit is signed by a human (not bot) |
+| release_approval | deny | Signed release approval attestation present |
+| sonarqube | deny/warn | SonarQube quality gate passed; warns on findings |
+
+### ClusterImagePolicies
+
+Enforced by the sigstore policy-controller on image deployments:
+
+| Policy | Enforcement |
+|--------|-------------|
+| parasol-image-signature-required | Image must be signed by Tekton Chains or Red Hat |
+| parasol-signed-commit-required | SLSA provenance must show a signed commit |
+| parasol-release-approval-required | Release approval attestation must be approved |
+
+## Operator Version Pinning
+
+Operators are pinned via two mechanisms:
+
+- **Catalog snapshot** (`redhat-operators-snapshot`) -- a frozen OLM catalog image for operators that should not auto-upgrade (AMQ Streams, Quay, DevSpaces, Kuadrant, Skupper)
+- **Live catalog with versioned channels** -- for operators needing the latest patches (RHACS on `rhacs-4.11`, RHTAS on `stable-v1.4`, Policy Controller on `stable-v1.1`)
 
 ## Developer Hub (RHDH)
 
@@ -54,21 +145,19 @@ The tenant parasol-insurance chart (`tenant/parasol-insurance-tenant/`) creates:
 
 ```
 Shared (visible to all users):
-  System: parasol-insurance
-  API: parasol-insurance-api
+  System: parasol-insurance, parasol-insurance-secured
+  API: parasol-insurance-api, parasol-insurance-secured-api
   Resources: kafka-cluster, llm-inference-server
-  Templates: Parasol Insurance Development Environment
+  Templates: Parasol Insurance Development Environment,
+             Secured Parasol Insurance Development Environment
   Groups: users, admins
   Users: (synced from Keycloak)
 
 Per-user (visible only to owner via RBAC):
   Component: parasol-insurance-<username>
-    - From catalog-info.yaml in user's parasol-insurance GitLab repo
-    - Annotations link to user's ArgoCD apps, K8s namespaces, pipelines
-
-Per-dev-environment (visible only to owner via RBAC):
-  Component: parasol-insurance-dev-<username>
-    - From catalog-info.yaml in the gitops repo created by the software template
+  Component: parasol-insurance-secured-<username>
+    - From catalog-info.yaml in user's GitLab repos
+    - Annotations link to ArgoCD apps, K8s namespaces, pipelines
 ```
 
 ### RBAC Model
@@ -86,67 +175,17 @@ The `developer` role has **conditional read policies**:
 - **Shared types** (System, API, Template, Group, User, Location, Domain, Resource): visible to all
 - **Update/Delete**: only on owned entities
 
-### Kubernetes Resource Labeling
+## Software Templates
 
-For RHDH topology, CI, and Kubernetes views to work correctly, all resources must have:
+### Parasol Insurance Development Environment
 
-```yaml
-# On ALL resource metadata (Deployment, Service, Route, DB, etc.)
-labels:
-  app.kubernetes.io/name: parasol-insurance-<username>    # Per-user filtering
-  app.kubernetes.io/part-of: parasol-insurance-<env>       # Topology grouping
-  app.openshift.io/runtime: quarkus                        # Icon (or postgresql for DB)
+Creates an isolated dev environment with a basic CI/CD pipeline (clone, SonarQube, build, deploy).
 
-# On PipelineRun templates (TriggerTemplate)
-labels:
-  app.kubernetes.io/name: parasol-insurance-<username>     # Tekton plugin matching
-```
+### Secured Parasol Insurance Development Environment
 
-Catalog entity annotations that reference these:
+Creates a secured dev environment with the full supply chain: gitsign-signed commits, ACS scanning, commit signature verification, and EC policy validation on promotion.
 
-```yaml
-annotations:
-  backstage.io/kubernetes-id: parasol-insurance-<username>
-  backstage.io/kubernetes-label-selector: "app.kubernetes.io/name=parasol-insurance-<username>"
-  janus-idp.io/tekton: parasol-insurance
-  argocd/app-name: <username>-dev
-```
-
-> [!IMPORTANT]
-> Do NOT use `backstage.io/kubernetes-namespace`. The Kubernetes plugin uses a cluster-wide ServiceAccount token and filters by label selector. Setting a namespace would limit visibility to one namespace, missing resources in build/prod.
-
-> [!IMPORTANT]
-> Labels must be on resource **metadata** (not just pod templates). The Kubernetes plugin fetches Deployments, Services, Routes etc. by label — if only pod templates have the label, only pods show up in the UI.
-
-## Software Template: Dev Environment
-
-The "Parasol Insurance Development Environment" template creates an isolated development environment. It lives in the [rhdh-templates](https://github.com/openshift-dev-days/rhdh-templates) repo.
-
-### What It Creates
-
-```
-1. Feature branch on user's parasol-insurance repo (GitLab)
-
-2. GitOps repo: <username>/parasol-insurance-<branch>-gitops
-   └── helm/          ← Namespaced resources only
-       ├── deployment, service, route (app + DB)
-       ├── pipeline (Clone → SonarQube → Build+Push → Re-rollout)
-       ├── event listener + webhook job
-       └── ExternalSecrets (GitLab, Quay, SonarQube, LiteLLM, Kafka)
-
-3. Bootstrap repo: parasol/parasol-insurance-<username>-<branch>-bootstrap
-   └── application.yaml  ← ArgoCD Application pointing at helm/ above
-
-4. ArgoCD bootstrap Application (in default project)
-   └── Creates child Application (in user's AppProject)
-       └── Deploys helm/ chart into <username>-<branch> namespace
-
-5. Catalog entry: parasol-insurance-dev-<username> Component
-```
-
-### Security Model
-
-The template uses a two-repo pattern to prevent privilege escalation:
+Both templates live in the [rhdh-templates](https://github.com/openshift-dev-days/rhdh-templates) repo and use the two-repo bootstrap pattern for ArgoCD security isolation:
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -180,18 +219,37 @@ The template uses a two-repo pattern to prevent privilege escalation:
 └─────────────────────────────────────────────────────┘
 ```
 
-The `ClusterRoleBinding` for Tekton `openshift-pipelines-clusterinterceptors` is granted **cluster-wide** to all ServiceAccounts (read-only on ClusterInterceptor metadata — not sensitive). This avoids needing per-environment cluster-scoped resources.
+### Kubernetes Resource Labeling
 
-### Pipeline
+For RHDH topology, CI, and Kubernetes views to work correctly, all resources must have:
 
-The CI/CD pipeline has 4 stages matching the workshop scenario:
+```yaml
+# On ALL resource metadata (Deployment, Service, Route, DB, etc.)
+labels:
+  app.kubernetes.io/name: parasol-insurance-<username>    # Per-user filtering
+  app.kubernetes.io/part-of: parasol-insurance-<env>       # Topology grouping
+  app.openshift.io/runtime: quarkus                        # Icon (or postgresql for DB)
 
-1. **Clone** — git-clone from the feature branch
-2. **SonarQube SAST** — code quality analysis
-3. **Build and Push** — Buildah container build, push to Quay
-4. **Re-rollout** — restart deployment with new image
+# On PipelineRun templates (TriggerTemplate)
+labels:
+  app.kubernetes.io/name: parasol-insurance-<username>     # Tekton plugin matching
+```
 
-Triggered by GitLab webhooks via Tekton EventListener. The base tenant build pipeline filters to `main` branch only; dev environment pipelines filter to their specific feature branch.
+Catalog entity annotations that reference these:
+
+```yaml
+annotations:
+  backstage.io/kubernetes-id: parasol-insurance-<username>
+  backstage.io/kubernetes-label-selector: "app.kubernetes.io/name=parasol-insurance-<username>"
+  janus-idp.io/tekton: parasol-insurance
+  argocd/app-name: <username>-dev
+```
+
+> [!IMPORTANT]
+> Do NOT use `backstage.io/kubernetes-namespace`. The Kubernetes plugin uses a cluster-wide ServiceAccount token and filters by label selector. Setting a namespace would limit visibility to one namespace, missing resources in build/prod.
+
+> [!IMPORTANT]
+> Labels must be on resource **metadata** (not just pod templates). The Kubernetes plugin fetches Deployments, Services, Routes etc. by label -- if only pod templates have the label, only pods show up in the UI.
 
 ## Key Learnings
 
@@ -199,10 +257,14 @@ Things that tripped us up during development:
 
 - **RHDH operator** creates routes as `backstage-developer-hub-<namespace>.*`, not `developer-hub-<namespace>.*`
 - **Keycloak route** is `sso.*`, not `keycloak-keycloak.*`
-- **keycloakOrg plugin** defaults `loginRealm` to `master` — must set explicitly if the client is in another realm
+- **keycloakOrg plugin** defaults `loginRealm` to `master` -- must set explicitly if the client is in another realm
 - **Dynamic plugins**: overriding a plugin entry in `includes` replaces the entire entry including `pluginConfig`
 - **`permission.enabled: true`** is required in app-config for RBAC to work
-- **Vault setup job** can overwrite manually-seeded secrets on re-run — always wire secrets through the full app-of-apps chain
-- **GitLab mirror push** carries branch protection from the source repo — unprotect before pushing
-- **ArgoCD `argocd:create-resources`** action always tries to create an AppProject when `projectName` is set — use unique names or omit it
-- **GitLab repo visibility** defaults to private for user namespaces — explicitly set to public after import since ArgoCD has no GitLab credentials
+- **Vault setup job** can overwrite manually-seeded secrets on re-run -- always wire secrets through the full app-of-apps chain
+- **GitLab `import_url` API** is async and can take hours -- use synchronous `git clone --bare` + `git push --mirror` for repos that need post-import modifications (e.g. placeholder substitution)
+- **GitLab mirror push** carries branch protection from the source repo -- unprotect before pushing
+- **GitLab repo visibility** defaults to private for user namespaces -- explicitly set to public after import since ArgoCD has no GitLab credentials
+- **EC (Enterprise Contract) v0.9.x** requires rego files under `policy/release/` directory with bare package names -- the `policy.release` namespace comes from directory structure, not the package declaration
+- **EC caching bug** in v0.9.x: identical `--policy` and `sources[].policy[]` URLs trigger a broken symlink -- use slightly different URLs (e.g. omit `.git` suffix in sources)
+- **Policy controller operator** is not in the Feb 2026 catalog snapshot -- must use the live `redhat-operators` catalog
+- **Cosign v3.x** (TAS 1.4.x) adds `--use-signing-config` and `--new-bundle-format` flags not present in v2.x -- pods fetching cosign from the TAS cli-server at startup need a restart after TAS upgrades
