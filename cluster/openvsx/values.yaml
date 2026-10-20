@@ -31,11 +31,6 @@ server:
   persistence:
     size: 10Gi
 
-# ┌─────────────────────────────────────────────────────────────┐
-# │ DEVELOPMENT FORK — change back before publishing:          │
-# │   redhat-tssc-tmm → rhpds                                  │
-# │   module2 → main                                           │
-# └─────────────────────────────────────────────────────────────┘
 build:
   git:
     # Overridden by app-of-apps to match gitops.repoURL and targetRevision

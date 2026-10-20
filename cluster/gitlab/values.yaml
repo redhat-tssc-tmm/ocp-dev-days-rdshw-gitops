@@ -40,11 +40,6 @@ gitlab:
         - id: dev1
         - id: dev2
     - name: parasol
-      # ┌─────────────────────────────────────────────────────────────┐
-      # │ DEVELOPMENT FORK — change back before publishing:          │
-      # │   redhat-tssc-tmm → openshift-dev-days                     │
-      # │   remove sourceBranch lines (content will be on main)      │
-      # └─────────────────────────────────────────────────────────────┘
       repo:
         - name: parasol-insurance
           url: https://github.com/openshift-dev-days/parasol-insurance.git

@@ -1,8 +1,3 @@
-# ┌─────────────────────────────────────────────────────────────┐
-# │ DEVELOPMENT FORK — change back before publishing:          │
-# │   redhat-tssc-tmm → rhpds                                  │
-# │   module2 → main                                           │
-# └─────────────────────────────────────────────────────────────┘
 gitops:
   repoURL: https://github.com/rhpds/ocp-dev-days-rdshw-gitops.git
   # repoURL: https://github.com/redhat-tssc-tmm/ocp-dev-days-rdshw-gitops.git
@@ -48,11 +43,9 @@ vault:
       userPassword: ""
     rhdh:
       argocdPassword: ""
-    # DEV ONLY — in production, pass clientSecret from the automation repo
     rhacs:
       clientId: rhacs
       clientSecret: "00ifaFXkWfrNZwrqvzYZwyBhjkEWBzA6"
-    # DEV ONLY — in production, pass clientSecret from the automation repo
     tpa:
       clientSecret: "SuTQThQk-68Lu-d7U1-R0co-ze2DBZ9EDPxP"
 

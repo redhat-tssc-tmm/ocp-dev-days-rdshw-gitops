@@ -15,10 +15,6 @@ spec:
   source:
     path: tenant/parasol-insurance-secured-tenant
     repoURL: {{ .Values.gitops.repoURL }}
-    # ┌─────────────────────────────────────────────────────────────┐
-    # │ DEVELOPMENT FORK — change back before publishing:          │
-    # │   module2 → main                                           │
-    # └─────────────────────────────────────────────────────────────┘
     targetRevision: {{ .Values.gitops.targetRevision }}
     helm:
       valuesObject:
